@@ -1,0 +1,12 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`seeded random and generator > pins one generated board, so a change to the generator or the random numbers is noticed 1`] = `
+[
+  "12120",
+  "22022",
+  "21020",
+  "01010",
+  "02210",
+  "11220",
+]
+`;
