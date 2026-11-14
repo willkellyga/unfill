@@ -2,7 +2,37 @@
 
 A cozy, phone-first web puzzle. This repository has milestone 1 (the rules lab: a flat 2D test board on the shared
 rules core), milestone 2 (the board library: generator, solver, difficulty rating and progression), milestone 3
-(the move economy), milestone 4 (the 3D terrarium slice) and milestone 5 (the full game loop).
+(the move economy), milestone 4 (the 3D terrarium slice), milestone 5 (the full game loop) and milestone 6 (polish: settings, color patterns, reduced motion, home-screen app).
+
+## Milestone 6: polish for her phone (Nov 14, 2026)
+
+- **Settings** (gear button): sound, room sounds, vibration, reduce motion, color patterns, quality, home screen, move
+  your progress, frame rate, new run, tap timings.
+- **Color patterns** (`src/app/game/prefs.ts`, shader in `blocks.ts`): each sand can carry a pressed-in pattern:
+  pink plain, green dots, lilac waves, yellow crosshatch, blue stripes. Default is the plan's "fifth color only" (blue,
+  which only appears on 5-color levels). Chosen from a color-vision simulation of the five sands (Machado 2009,
+  OKLab distance): lilac and blue are the closest pair for everyone and for deuteranopia (3.9), pink and green next
+  for deuteranopia (5.0), green and yellow for protanopia (7.2), green and blue for tritanopia (5.0). With "All
+  colors", every one of those pairs differs in pattern. Patterns run unbroken across a group's seams and move with the
+  sand.
+- **Reduce motion**: follows the phone's Reduce Motion setting until she flips the switch. Lifted groups shrink away
+  in place, falling sand cross-fades to where it lands (0.24 s), new levels grow in, and the bottle doesn't drop,
+  slide or bob. No grains, sparkles or caustic shimmer; UI banners only fade.
+- **Vibration**: `navigator.vibrate` on Android. iPhone Safari has no vibration API; on iOS 18+ the game flips a
+  hidden switch-style checkbox, which plays the system's selection tick. Untested on a real iPhone.
+- **Home-screen app and offline play**: `public/manifest.webmanifest`, icons in `public/icons/` (`icon.svg` is the
+  source), and a service worker written at build time (`pwa` plugin in `vite.config.ts`, template `src/sw-template.js`)
+  that caches every file and answers cache-first. Fonts are bundled (`@fontsource`, OFL) instead of Google Fonts, so
+  nothing comes from the network. `npm run offline-check` loads the built site as an iPhone, plays a move, cuts the
+  network, reloads and keeps playing.
+- **Hosting**: `.github/workflows/pages.yml` publishes `dist/` to GitHub Pages on every push to main, once Pages is
+  switched on (Settings > Pages > Source: GitHub Actions). The Claude artifact can't be installed or play offline: it
+  runs inside claude.ai's frame, where a service worker can't run.
+- **Move your progress**: on iPhone the home-screen app has its own storage, separate from Safari's. Settings > Move
+  your progress copies a code (`UNFILL1:` + base64url JSON of the run, shelf and high score) to paste on the other
+  side. It also works as a backup.
+- **iOS storage**: Safari can delete a site's storage after 7 days of using Safari without visiting it; home-screen
+  apps are exempt. The app also asks for persistent storage (`navigator.storage.persist`).
 
 ## Milestone 5: the full game loop (Nov 14, 2026)
 

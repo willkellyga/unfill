@@ -1,3 +1,4 @@
+import './fonts.css';
 import './style.css';
 import * as THREE from 'three';
 import {
@@ -14,8 +15,17 @@ import { Audio } from './audio';
 import { Blocks } from './blocks';
 import { Bottle } from './bottle';
 import { Grains } from './grains';
-import { SAND, sandColor, SAND_PITCH } from './palette';
+import { SAND, SAND_HEX, sandColor, SAND_PITCH } from './palette';
 import { FIRM, fallTime, planPour, type PourPlan } from './pour';
+import {
+  decodeProgress,
+  encodeProgress,
+  parsePatternMode,
+  parseReducedMotion,
+  patternFor,
+  type PatternMode,
+} from './prefs';
+import { initPwa, installState } from './pwa';
 import { SLOW_FRAME_MS, TIERS, type Tier, type TierName } from './quality';
 import { BLOCK, BOTTLE_SCALE, Terrarium } from './scene';
 import { renderShelf } from './shelf';
@@ -66,6 +76,24 @@ bottle.setScale(BOTTLE_SCALE);
 T.scene.add(bottle.group);
 const audio = new Audio(store.get('unfill-muted') === '1', store.get('unfill-ambient') !== '0');
 
+// milestone 6 settings: color-blind patterns, reduced motion (follows the phone until she flips it), vibration
+let patterns: PatternMode = parsePatternMode(store.get('unfill-patterns'));
+const systemReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+let reduced = parseReducedMotion(store.get('unfill-motion'), !!systemReduced?.matches);
+let vibrate = store.get('unfill-vibrate') !== '0';
+function applyLook(): void {
+  blocks.patterns = patterns;
+  bottle.reduced = reduced;
+  document.documentElement.classList.toggle('reduced', reduced);
+}
+applyLook();
+systemReduced?.addEventListener?.('change', () => {
+  if (store.get('unfill-motion') !== null) return; // she chose for herself
+  reduced = systemReduced.matches;
+  applyLook();
+  syncSettings();
+});
+
 function setTier(t: Tier): void {
   tier = t;
   T.setTier(t);
@@ -92,6 +120,8 @@ interface Flight {
   arrive: number;
   done: number;
   scale: number;
+  /** Reduced motion: shrinks away in place instead of flying. */
+  quick?: boolean;
 }
 
 interface Press {
@@ -242,6 +272,8 @@ function nextLevel(): void {
 interface FillIn {
   blocks: { cell: number; color: number; t0: number; t1: number; drop: number }[];
   end: number;
+  /** Reduced motion: blocks grow in place, bottom rows first, instead of falling in. */
+  quick?: boolean;
 }
 
 /**
@@ -251,6 +283,19 @@ interface FillIn {
  */
 function planFillIn(b: Board, t0: number): FillIn {
   const { cols, rows, cells } = b;
+  if (reduced) {
+    const list: FillIn['blocks'] = [];
+    for (let r = rows - 1; r >= 0; r--)
+      for (let c = 0; c < cols; c++) {
+        const i = r * cols + c;
+        if (cells[i] === EMPTY) continue;
+        const s = t0 + (rows - 1 - r) * 0.025;
+        list.push({ cell: i, color: cells[i], t0: s, t1: s + 0.2, drop: 0 });
+      }
+    const end = t0 + (rows - 1) * 0.025 + 0.2;
+    audio.hiss([[t0 - now(), 0.3], [end - now(), 0]], 3000, 0.2);
+    return { blocks: list, end, quick: true };
+  }
   const list: FillIn['blocks'] = [];
   let end = t0;
   const start = T.innerTop + 0.3;
@@ -290,6 +335,12 @@ function drawFillIn(f: FillIn, t: number): void {
     const c = k.cell % cols;
     const r = (k.cell / cols) | 0;
     const y = T.cellY(r) - BLOCK / 2;
+    if (f.quick) {
+      const s = easeOut(clamp((t - k.t0) / (k.t1 - k.t0), 0, 1));
+      blocks.block({ x: T.cellX(c), y0: T.cellY(r) - (BLOCK * s) / 2, h: 1, sx: s, sy: s, sz: s, color: k.color });
+      if (s >= 1) landed[k.cell] = k.color;
+      continue;
+    }
     if (t < k.t1) {
       const u = (t - k.t0) / (k.t1 - k.t0);
       blocks.block({ x: T.cellX(c), y0: y + k.drop * (1 - u * u), h: 1, color: k.color });
@@ -337,12 +388,25 @@ function doLift(cell: number): void {
   hover = null;
 
   // the tray pour, starting as the group leaves its cells
-  pour = planPour(before.board, before.ids, res.group, res.trace!.steps[0] ?? [], t0 + 0.12);
-  launchPourGrains(pour);
+  pour = planPour(before.board, before.ids, res.group, res.trace!.steps[0] ?? [], t0 + (reduced ? 0.1 : 0.12), reduced);
+  if (!reduced) launchPourGrains(pour);
   pourSound(pour, t0);
+  buzz();
+
+  const total = S.total;
+  if (reduced) {
+    // reduced motion: the group fades where it is and its layer fades up in the bottle; nothing flies
+    const f = quickFlight(res.group, before.board.cols, color, t0);
+    flights.push(f);
+    const fillFrom = bottle.layerCount ? Math.min(1, (total - countBlocks(before.board)) / total) : 0;
+    bottle.addLayer(sandColor(color), res.group.length / total, t0 + 0.08, t0 + 0.34);
+    audio.thup(res.group.length);
+    audio.bottlePour(0.05, 0.3, fillFrom, Math.min(1, fillFrom + res.group.length / total), SAND_PITCH[color % 5]);
+    afterLift(out);
+    return;
+  }
 
   // the group's flight to the bottle and the layer it pours
-  const total = S.total;
   const f = makeFlight(res.group, before.board.cols, color, t0);
   flights.push(f);
   const base = bottle.surfaceY();
@@ -359,13 +423,10 @@ function doLift(cell: number): void {
   f.done = l1 + 0.05;
   audio.thup(res.group.length);
   audio.bottlePour(f.arrive - t0, pourDur + firstFall, fillFrom, Math.min(1, fillFrom + res.group.length / total), SAND_PITCH[color % 5]);
-  if (navigator.vibrate) {
-    try {
-      navigator.vibrate(8); // Android only; iPhone Safari has no web vibration
-    } catch {
-      /* ignore */
-    }
-  }
+  afterLift(out);
+}
+
+function afterLift(out: { keepsake?: Keepsake | null }): void {
   if (out.keepsake) {
     persistShelf();
     if (S.score > best) {
@@ -375,6 +436,45 @@ function doLift(cell: number): void {
   }
   persist();
   updateHud();
+}
+
+/**
+ * A light tap on each lift. Android browsers have navigator.vibrate. iPhone Safari has no vibration API, but from
+ * iOS 18 toggling a switch-style checkbox plays the system's selection tick, so a hidden one is flipped instead
+ * (only works inside a tap, which is where lifts happen).
+ */
+let hapticLabel: HTMLLabelElement | null = null;
+function buzz(): void {
+  if (!vibrate) return;
+  if (typeof navigator.vibrate === 'function') {
+    try {
+      navigator.vibrate(8);
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+  if (!hapticLabel) {
+    hapticLabel = document.createElement('label');
+    hapticLabel.setAttribute('aria-hidden', 'true');
+    hapticLabel.className = 'haptic';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.setAttribute('switch', '');
+    input.tabIndex = -1;
+    hapticLabel.appendChild(input);
+    document.body.appendChild(hapticLabel);
+  }
+  hapticLabel.click();
+}
+
+/** Reduced motion's stand-in for a flight: the group glows, then shrinks away in place. */
+function quickFlight(group: number[], cols: number, color: number, t0: number): Flight {
+  const f = makeFlight(group, cols, color, t0);
+  f.quick = true;
+  f.arrive = t0 + 0.05;
+  f.done = t0 + 0.3;
+  return f;
 }
 
 function makeFlight(group: number[], cols: number, color: number, t0: number): Flight {
@@ -592,7 +692,7 @@ function maybeCork(t: number): void {
   bottle.corkAt(t + 0.15);
   audio.cork(0.15 + 0.42, 0.15 + 0.75);
   audio.chime(0.15 + 0.95);
-  launchSparkle(bottle.corkSeatTime);
+  if (!reduced) launchSparkle(bottle.corkSeatTime);
   clearBanner();
   window.setTimeout(() => {
     if (!S.cleared) return;
@@ -701,6 +801,7 @@ function drawSettled(b: Board, glowAt: (i: number) => number, liftAt?: (i: numbe
 }
 
 function drawPour(p: PourPlan, t: number): void {
+  if (p.quick) return drawQuickPour(p, t);
   const cols = T.cols;
   const rows = T.rows;
   // still blocks, with bridges among them
@@ -735,8 +836,35 @@ function drawPour(p: PourPlan, t: number): void {
   blocks.bridgesFor(cols, rows, (i) => still[i]);
 }
 
+/** Reduced motion: the blocks that fall shrink away where they were and grow where they land. */
+function drawQuickPour(p: PourPlan, t: number): void {
+  const cols = T.cols;
+  const still = new Int8Array(cols * T.rows).fill(EMPTY);
+  for (const [id, cell] of p.still) {
+    const color = p.colorOf.get(id)!;
+    still[cell] = color;
+    blocks.block({ x: T.cellX(cell % cols), y0: T.cellY((cell / cols) | 0) - BLOCK / 2, h: 1, color });
+  }
+  for (const b of p.blocks) {
+    const x = T.cellX(b.col);
+    const out = 1 - easeInOut(clamp((t - b.d0) / (b.d1 - b.d0), 0, 1));
+    if (out > 0.01) blocks.block({ x, y0: T.cellY(b.fromRow) - (BLOCK * out) / 2, h: 1, sx: out, sy: out, sz: out, color: b.color });
+    const inn = easeInOut(clamp((t - b.f0) / (b.f1 - b.f0), 0, 1));
+    if (inn > 0.01) blocks.block({ x, y0: T.cellY(b.toRow) - (BLOCK * inn) / 2, h: 1, sx: inn, sy: inn, sz: inn, color: b.color });
+    if (inn >= 1) still[b.toRow * cols + b.col] = b.color;
+  }
+  blocks.bridgesFor(cols, T.rows, (i) => still[i]);
+}
+
 function drawFlights(t: number): void {
   for (const f of flights) {
+    if (f.quick) {
+      const k = clamp((t - f.t0) / (f.done - f.t0), 0, 1);
+      const s = 1 - easeInOut(k);
+      if (s <= 0.01) continue;
+      for (const b of f.blocks) blocks.block({ x: b.x, y0: b.y - (BLOCK * s) / 2, h: 1, sx: s, sy: s, sz: s, color: b.color, glow: 0.4 * (1 - k) });
+      continue;
+    }
     const pose = flightPose(f, t);
     const pourDur = f.done - f.arrive;
     const nb = f.blocks.length;
@@ -826,7 +954,7 @@ function frame(): void {
   bottle.update(t);
   T.moveBottleShadow(bottle.offset.x, bottle.offset.y);
   grains.update(t);
-  T.tick(t);
+  T.tick(reduced ? 0 : t);
   maybeCork(t);
   maybeNextLevel(t);
   if (S.over && !overShown && !pour && !flights.length && !fillIn) showOver();
@@ -958,6 +1086,19 @@ function syncSettings(): void {
   }
   $('tierNote').textContent = tierChoice === 'auto' ? `Auto picked ${tier.label}.` : `${tier.label}, chosen by you.`;
   $('fps').hidden = !showFps;
+  $('setVibe').setAttribute('aria-checked', String(vibrate));
+  $('vibeNote').textContent =
+    typeof navigator.vibrate === 'function' ? 'a light tap with each lift' : 'a light tap with each lift (iPhone: iOS 18 or later)';
+  $('setMotion').setAttribute('aria-checked', String(reduced));
+  $('motionNote').textContent =
+    store.get('unfill-motion') === null
+      ? `sand fades into place instead of pouring; following your device (${systemReduced?.matches ? 'on' : 'off'})`
+      : 'sand fades into place instead of pouring';
+  for (const b of document.querySelectorAll<HTMLButtonElement>('[data-pat]')) {
+    b.setAttribute('aria-pressed', String(b.dataset.pat === patterns));
+  }
+  renderPatKey();
+  syncInstall();
   const s = timingSummary();
   $('timingText').textContent = s
     ? `${s.taps} taps logged: ${s.think.toFixed(1)} s thinking + ${s.anim.toFixed(1)} s pouring per tap on average.`
@@ -989,6 +1130,132 @@ $('setAmbient').onclick = () => {
   store.set('unfill-ambient', audio.ambient ? '1' : '0');
   syncSettings();
 };
+$('setVibe').onclick = () => {
+  vibrate = !vibrate;
+  store.set('unfill-vibrate', vibrate ? '1' : '0');
+  syncSettings();
+  buzz();
+};
+$('setMotion').onclick = () => {
+  reduced = !reduced;
+  store.set('unfill-motion', reduced ? '1' : '0');
+  if (reduced) grains.clear();
+  applyLook();
+  syncSettings();
+};
+for (const b of document.querySelectorAll<HTMLButtonElement>('[data-pat]')) {
+  b.onclick = () => {
+    patterns = parsePatternMode(b.dataset.pat ?? null);
+    store.set('unfill-patterns', patterns);
+    applyLook();
+    syncSettings();
+  };
+}
+
+/** A row of the five sands as they look with the chosen patterns. */
+function renderPatKey(): void {
+  const el = $('patKey');
+  const svgFor = (sand: number): string => {
+    const k = patternFor(sand, patterns);
+    const fill = SAND_HEX[sand];
+    const ink = 'rgba(70,45,35,0.32)';
+    const id = `pk${sand}`;
+    const defs = [
+      '',
+      `<pattern id="${id}" width="7" height="7" patternUnits="userSpaceOnUse"><circle cx="3.5" cy="3.5" r="1.5" fill="${ink}"/></pattern>`,
+      `<pattern id="${id}" width="14" height="7" patternUnits="userSpaceOnUse"><path d="M0 3.5 Q3.5 1.2 7 3.5 T14 3.5" stroke="${ink}" stroke-width="1.6" fill="none"/></pattern>`,
+      `<pattern id="${id}" width="7" height="7" patternUnits="userSpaceOnUse"><path d="M0 0L7 7M7 0L0 7" stroke="${ink}" stroke-width="0.9"/></pattern>`,
+      `<pattern id="${id}" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)"><rect width="10" height="2.8" fill="${ink}"/></pattern>`,
+    ][k];
+    return `<svg viewBox="0 0 28 28" width="28" height="28"><defs>${defs}</defs><rect x="1" y="1" width="26" height="26" rx="7" fill="${fill}"/>${
+      k ? `<rect x="1" y="1" width="26" height="26" rx="7" fill="url(#${id})"/>` : ''
+    }</svg>`;
+  };
+  el.innerHTML = [0, 1, 2, 3, 4].map(svgFor).join('');
+}
+
+/** The home-screen row: how to install here, or that it's installed and works offline. */
+function syncInstall(): void {
+  const st = installState();
+  const note = $('installNote');
+  const row = $('installRow');
+  row.querySelector('.installBtn')?.remove();
+  if (st.standalone) {
+    note.textContent = st.offlineReady
+      ? 'Installed, and it plays offline. Your progress is saved on this phone.'
+      : 'Installed. Getting the offline copy ready…';
+  } else if (!st.offlineCapable) {
+    note.textContent =
+      'This preview link can’t be added to the home screen or play offline. Your progress is saved in this browser.';
+  } else if (st.prompt) {
+    note.textContent = 'Install Unfill as an app. It opens full screen and plays offline.';
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'installBtn primary';
+    b.textContent = 'Install Unfill';
+    b.onclick = () => void st.prompt?.();
+    row.appendChild(b);
+  } else if (st.ios) {
+    note.innerHTML =
+      'In Safari, tap <b>Share</b> <span class="shareIcon" aria-label="(the square with an arrow)"></span>, then <b>Add to Home Screen</b>. It opens full screen and plays offline. Your Safari progress doesn’t move over by itself: use “Move your progress” below.';
+  } else {
+    note.textContent = st.offlineReady
+      ? 'Ready to play offline in this browser. Use your browser’s “Install” or “Add to Home screen” menu item to make it an app.'
+      : 'Use your browser’s “Install” or “Add to Home screen” menu item to make it an app.';
+  }
+}
+
+// ---------------------------------------------------------------- moving her progress (Safari ⇄ home-screen app)
+
+$('copyProgress').onclick = async () => {
+  const code = encodeProgress({ save: S.toSave(), shelf: S.shelf, best: Math.max(best, S.score) });
+  try {
+    await navigator.clipboard.writeText(code);
+    toast('Progress code copied');
+  } catch {
+    // no clipboard here: show the code so it can be copied by hand
+    $('pasteBox').hidden = false;
+    $<HTMLTextAreaElement>('pasteCode').value = code;
+    $<HTMLTextAreaElement>('pasteCode').select();
+    toast('Copy the code in the box');
+  }
+};
+$('pasteToggle').onclick = () => {
+  const box = $('pasteBox');
+  box.hidden = !box.hidden;
+  $('pasteToggle').setAttribute('aria-expanded', String(!box.hidden));
+  if (!box.hidden) $('pasteCode').focus();
+};
+let loadArmed = 0;
+$('loadProgress').onclick = () => {
+  const p = decodeProgress($<HTMLTextAreaElement>('pasteCode').value);
+  const shelf = p ? (p.shelf as Keepsake[]).filter((k) => k && Array.isArray(k.layers) && Number.isInteger(k.n)) : [];
+  const restored = p && p.save ? Session.restore(library.boards, p.save, shelf) : null;
+  if (!p || (p.save && !restored)) {
+    toast('That code didn’t work. Copy it again and paste the whole thing.');
+    return;
+  }
+  // two taps, because this replaces the game on this device
+  if (!loadArmed) {
+    $('loadProgress').textContent = `Tap again to load level ${restored ? restored.n : 1}, ${shelf.length} bottles`;
+    loadArmed = window.setTimeout(() => {
+      loadArmed = 0;
+      $('loadProgress').textContent = 'Load this progress';
+    }, 4000);
+    return;
+  }
+  clearTimeout(loadArmed);
+  loadArmed = 0;
+  if (ephemeral) {
+    toast('Not in a test link (?tray or ?nosave)');
+    return;
+  }
+  store.set(SAVE_KEY, JSON.stringify(p.save));
+  store.set(SHELF_KEY, JSON.stringify(shelf));
+  store.set(BEST_KEY, String(Math.max(best, p.best)));
+  location.reload();
+};
+
 $('setFps').onclick = () => {
   showFps = !showFps;
   store.set('unfill-fps', showFps ? '1' : '0');
@@ -1118,6 +1385,8 @@ $('startBtn').onclick = () => {
   if (tierChoice === 'auto') tierCheck = { until: performance.now() + 2000, sum: 0, count: 0 };
   levelBanner(null);
 };
+initPwa(() => syncInstall(), toast);
+
 // her progress is saved after every move; this catches anything in flight when the page goes away
 window.addEventListener('pagehide', persist);
 

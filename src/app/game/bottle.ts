@@ -298,17 +298,22 @@ export class Bottle {
     this.group.rotation.z = 0;
   }
 
+  /** Reduced motion: the bottle doesn't drop in, slide off or bob, and the cork simply appears, seated. */
+  reduced = false;
+
   update(now: number): void {
     // enter: drops in from above with a soft landing; exit: slides away to the right and off the tray
     let dx = 0;
     let dy = 0;
     const et = (now - this.enterT0) / 0.5;
-    if (et >= 0 && et < 1) {
+    if (this.reduced) {
+      if (now >= this.exitT0) dx = 7;
+    } else if (et >= 0 && et < 1) {
       const e = 1 - Math.pow(1 - et, 3);
       dy = 1.8 * (1 - e) - 0.06 * Math.sin(et * Math.PI);
     }
     const xt = (now - this.exitT0) / 0.55;
-    if (xt >= 0) {
+    if (xt >= 0 && !this.reduced) {
       const e = Math.min(1, xt);
       dx = 7 * e * e;
       dy += 0.25 * Math.sin(e * Math.PI);
@@ -326,7 +331,10 @@ export class Bottle {
       this.cork.visible = true;
       let y: number;
       let spin = 0;
-      if (ct < 0.4) {
+      if (this.reduced) {
+        y = CORK_SEAT;
+        spin = Math.PI * 1.4;
+      } else if (ct < 0.4) {
         const e = easeOut(ct / 0.4);
         y = CORK_SEAT + 0.95 - 0.8 * e;
       } else if (ct < 0.75) {
@@ -342,7 +350,7 @@ export class Bottle {
       this.cork.rotation.y = spin;
     }
     const bt = now - this.bobT0;
-    if (bt >= 0 && bt < 0.9) {
+    if (bt >= 0 && bt < 0.9 && !this.reduced) {
       const k = Math.sin(bt * Math.PI * 4) * Math.exp(-bt * 4.5);
       this.group.scale.set(this.scale * (1 - 0.03 * k), this.scale * (1 + 0.05 * k), this.scale * (1 - 0.03 * k));
       this.group.rotation.z = 0.035 * Math.sin(bt * Math.PI * 3) * Math.exp(-bt * 3);

@@ -799,3 +799,82 @@ body .count small {
 #over {
   z-index: 4;
 }
+
+/* ================================================================ milestone 6: polish */
+
+/* reduced motion (Settings, or the device's own setting): no sliding, bouncing or popping; quick fades only */
+html.reduced .morePanel,
+html.reduced .banner,
+html.reduced .banner.show .stars i,
+html.reduced #shelfBtn.bump,
+html.reduced .shelf,
+html.reduced .intro,
+html.reduced .introInner {
+  animation: none !important;
+}
+html.reduced .toast,
+html.reduced .toast.show {
+  transition: opacity 0.2s ease !important;
+  transform: translate(-50%, 0) !important;
+}
+html.reduced .banner {
+  transition: opacity 0.2s ease !important;
+  transform: translate(-50%, -50%) !important;
+}
+html.reduced .switch::after {
+  transition: none;
+}
+
+.segs.three {
+  grid-template-columns: repeat(3, 1fr);
+}
+.segs.two {
+  grid-template-columns: repeat(2, 1fr);
+}
+.patKey {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  padding-top: 2px;
+}
+.patKey svg {
+  display: block;
+}
+.paste {
+  display: grid;
+  gap: 8px;
+}
+.paste textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: 700 16px/1.3 ui-monospace, monospace; /* 16px: iPhone Safari zooms into smaller text fields */
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px 10px;
+  resize: vertical;
+  word-break: break-all;
+}
+.installBtn {
+  margin-top: 2px;
+}
+.shareIcon {
+  display: inline-block;
+  width: 0.9em;
+  height: 1.05em;
+  vertical-align: -0.15em;
+  background: no-repeat center / contain
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 24' fill='none' stroke='%237a6157' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 15V2M5.5 6.5 10 2l4.5 4.5M6 10H3v12h14V10h-3'/%3E%3C/svg%3E");
+}
+/* the hidden switch flipped for an iPhone haptic tick (main.ts buzz) */
+.haptic {
+  position: fixed;
+  left: -200px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}

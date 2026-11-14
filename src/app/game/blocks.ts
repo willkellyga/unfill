@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { EMPTY } from '../../core';
 import { BLOCK, BLOCK_DEPTH, type Terrarium } from './scene';
 import { sandColor } from './palette';
+import { patternFor, type PatternMode } from './prefs';
 import { sandTexture } from './textures';
 
 /**
@@ -14,20 +15,63 @@ import { sandTexture } from './textures';
 const MAX_BLOCKS = 300;
 const MAX_BRIDGES = 400;
 
-/** Adds a per-instance glow (0..1) to a standard material, for the hover and preview highlights. */
+/**
+ * Color-blind patterns (prefs.ts): a fine surface pattern pressed into the sand, picked per instance by `aPat`
+ * (0 plain, 1 dots, 2 waves, 3 crosshatch, 4 stripes). Drawn in world units around each instance's center, with
+ * periods that divide the half-cell spacing of blocks and the bridges between them, so a group's pattern runs
+ * unbroken across its seams and moves with the sand as it falls.
+ */
+const PATTERN_GLSL = /* glsl */ `
+float patLine(float v, float w) {
+  float d = abs(fract(v) - 0.5);
+  float aa = fwidth(v) * 0.75;
+  return 1.0 - smoothstep(w - aa, w + aa, d);
+}
+float patMask(vec2 p, float k) {
+  if (k < 0.5) return 0.0;
+  vec2 q = p * 4.0; // period 0.25 world units: four repeats per cell
+  if (k < 1.5) {
+    vec2 f = fract(q) - 0.5;
+    float r = length(f);
+    float aa = fwidth(q.x) * 0.75;
+    return 1.0 - smoothstep(0.2 - aa, 0.2 + aa, r);
+  }
+  if (k < 2.5) return 1.0 - patLine(q.y + 0.16 * sin(q.x * 3.14159265), 0.38);
+  if (k < 3.5) return max(1.0 - patLine(q.x + q.y, 0.42), 1.0 - patLine(q.x - q.y, 0.42));
+  return 1.0 - patLine((q.x + q.y) * 0.5, 0.26);
+}
+`;
+
+/**
+ * Adds a per-instance glow (0..1) for highlights, and the color-blind pattern, to a standard material.
+ */
 function withGlow(mat: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
   mat.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float aGlow;\nvarying float vGlow;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGlow = aGlow;');
+      .replace(
+        '#include <common>',
+        '#include <common>\nattribute float aGlow;\nattribute float aPat;\nvarying float vGlow;\nvarying float vPat;\nvarying vec2 vPatUv;',
+      )
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+vGlow = aGlow;
+vPat = aPat;
+#ifdef USE_INSTANCING
+vPatUv = (modelMatrix * (instanceMatrix * vec4(transformed, 1.0) - instanceMatrix[3])).xy;
+#else
+vPatUv = (modelMatrix * vec4(transformed, 0.0)).xy;
+#endif`,
+      );
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vGlow;')
+      .replace('#include <common>', '#include <common>\nvarying float vGlow;\nvarying float vPat;\nvarying vec2 vPatUv;\n' + PATTERN_GLSL)
+      .replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb *= 1.0 - 0.3 * patMask(vPatUv, vPat);')
       .replace(
         '#include <emissivemap_fragment>',
         '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.94, 0.84) * vGlow * 0.55;',
       );
   };
-  mat.customProgramCacheKey = () => 'glow';
+  mat.customProgramCacheKey = () => 'glow-pattern';
   return mat;
 }
 
@@ -53,6 +97,10 @@ export class Blocks {
   readonly ghostMesh: THREE.InstancedMesh;
   private readonly glow: THREE.InstancedBufferAttribute;
   private readonly bridgeGlow: THREE.InstancedBufferAttribute;
+  private readonly pat: THREE.InstancedBufferAttribute;
+  private readonly bridgePat: THREE.InstancedBufferAttribute;
+  /** Which sands carry their color-blind pattern. */
+  patterns: PatternMode = 'fifth';
   private readonly ghostMat: THREE.MeshBasicMaterial;
   private n = 0;
   private nb = 0;
@@ -76,6 +124,9 @@ export class Blocks {
     this.glow = new THREE.InstancedBufferAttribute(new Float32Array(MAX_BLOCKS), 1);
     this.glow.setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute('aGlow', this.glow);
+    this.pat = new THREE.InstancedBufferAttribute(new Float32Array(MAX_BLOCKS), 1);
+    this.pat.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('aPat', this.pat);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.setColorAt(0, new THREE.Color());
     this.mesh.frustumCulled = false;
@@ -84,6 +135,9 @@ export class Blocks {
     this.bridgeGlow = new THREE.InstancedBufferAttribute(new Float32Array(MAX_BRIDGES), 1);
     this.bridgeGlow.setUsage(THREE.DynamicDrawUsage);
     bgeo.setAttribute('aGlow', this.bridgeGlow);
+    this.bridgePat = new THREE.InstancedBufferAttribute(new Float32Array(MAX_BRIDGES), 1);
+    this.bridgePat.setUsage(THREE.DynamicDrawUsage);
+    bgeo.setAttribute('aPat', this.bridgePat);
     // a touch darker than the blocks' faces, to sit in with their softly shaded edges
     const bmat = withGlow(
       new THREE.MeshStandardMaterial({ map: sandTexture(false), color: 0xe6e2de, roughness: 0.93, metalness: 0, envMapIntensity: 0.6 }),
@@ -121,6 +175,7 @@ export class Blocks {
   setGeometry(geo: THREE.BufferGeometry): void {
     const old = this.mesh.geometry;
     geo.setAttribute('aGlow', this.glow);
+    geo.setAttribute('aPat', this.pat);
     this.mesh.geometry = geo;
     this.ghostMesh.geometry = geo;
     old.dispose();
@@ -147,6 +202,7 @@ export class Blocks {
     this.mesh.setMatrixAt(i, this.m);
     this.mesh.setColorAt(i, sandColor(d.color));
     this.glow.setX(i, d.glow ?? 0);
+    this.pat.setX(i, patternFor(d.color, this.patterns));
   }
 
   /**
@@ -184,6 +240,7 @@ export class Blocks {
     this.bridges.setMatrixAt(i, this.m);
     this.bridges.setColorAt(i, sandColor(color));
     this.bridgeGlow.setX(i, glow);
+    this.bridgePat.setX(i, patternFor(color, this.patterns));
   }
 
   ghost(x: number, y: number, z: number, scale: number, color: number): void {
@@ -217,6 +274,8 @@ export class Blocks {
     for (const [a, count] of [
       [this.glow, this.n],
       [this.bridgeGlow, this.nb],
+      [this.pat, this.n],
+      [this.bridgePat, this.nb],
     ] as const) {
       a.clearUpdateRanges();
       a.addUpdateRange(0, Math.max(1, count));
