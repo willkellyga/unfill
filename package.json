@@ -19,6 +19,7 @@
     "loop-check": "node scripts/loop-check.cjs",
     "offline-check": "node scripts/offline-check.cjs",
     "playtest-check": "node scripts/playtest-check.cjs",
+    "orientation-check": "node scripts/orientation-check.cjs",
     "tuning:sample": "tsx gen/tuning/sample.ts",
     "tuning": "tsx gen/tuning/tune.ts",
     "tuning:calibrate": "tsx gen/tuning/calibrate.ts",

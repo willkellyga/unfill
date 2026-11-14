@@ -30,6 +30,7 @@ import {
 import { COLLECTOR_URL, DEVICE_KEY, Playtest, type Outcome } from './playtest';
 import { browserKind, homeCardHtml } from './homecard';
 import { initPwa, installState } from './pwa';
+import { isLandscape, isPhone, lockPortrait, preventZoom, resetZoom } from './orientation';
 import { SLOW_FRAME_MS, TIERS, type Tier, type TierName } from './quality';
 import { BLOCK, BOTTLE_SCALE, Terrarium } from './scene';
 import { renderShelf } from './shelf';
@@ -140,6 +141,10 @@ let pour: PourPlan | null = null;
 let flights: Flight[] = [];
 let press: Press | null = null;
 let hover: number[] | null = null;
+/** The view size the camera was last framed for (see syncView). */
+let framedFor = '';
+/** A phone is held sideways and the upright card is up (checkUpright). */
+let sideways = false;
 let fillIn: FillIn | null = null;
 /** Scene time at which the next level starts, once the bottle is corked and set aside. */
 let pendingNext: number | null = null;
@@ -970,7 +975,15 @@ const costLog: number[] = [];
 let tierCheck: { until: number; sum: number; count: number } | null = null;
 
 function frame(): void {
+  syncView();
   const t0 = performance.now();
+  if (sideways) {
+    // the upright card covers the tray: nothing to draw, and the frame-rate check starts over once she turns back
+    lastFrame = 0;
+    if (tierCheck) tierCheck = { until: t0 + 2000, sum: 0, count: 0 };
+    requestAnimationFrame(frame);
+    return;
+  }
   const t = now();
   if (lastFrame) {
     const dt = t0 - lastFrame;
@@ -1117,13 +1130,20 @@ function toast(msg: string): void {
   toastTimer = window.setTimeout(() => el.classList.remove('show'), 2200);
 }
 
+/** What the framing depends on: the canvas's real size, the window's, and the pixel density. */
+function viewKey(): string {
+  return `${canvas.clientWidth}x${canvas.clientHeight} ${window.innerWidth}x${window.innerHeight} @${window.devicePixelRatio}`;
+}
 function layout(): void {
+  framedFor = viewKey();
+  T.renderer.setPixelRatio(Math.min(tier.maxDpr, window.devicePixelRatio || 1));
+  const view = canvas.getBoundingClientRect();
   const hud = $('hud').getBoundingClientRect();
   const bar = $('bar').getBoundingClientRect();
-  const H = window.innerHeight;
   // the bottle sits centered on top and the header's chips sit either side of it, so the scene can use their height
-  const top = hud.top + parseFloat(getComputedStyle($('hud')).paddingTop);
-  T.frame({ top: Math.max(8, top), bottom: H - bar.top + 6, side: 4 });
+  const top = hud.top - view.top + parseFloat(getComputedStyle($('hud')).paddingTop);
+  // measured against the canvas, not window.innerHeight, which iOS can report stale for a moment after a rotation
+  T.frame({ top: Math.max(8, top), bottom: view.bottom - bar.top + 6, side: 4 });
   const vp = T.viewport;
   grains.setScale(vp.h * T.renderer.getPixelRatio(), T.fov);
   // banners sit in the middle of the tray
@@ -1557,6 +1577,47 @@ document.addEventListener('visibilitychange', () => {
 
 window.addEventListener('resize', layout);
 window.visualViewport?.addEventListener('resize', layout);
+
+// ---------------------------------------------------------------- phones play upright (orientation.ts)
+
+preventZoom();
+lockPortrait();
+let sidewaysSince = 0;
+
+/** Show the "turn your phone upright" card while a phone is sideways; it keeps taps off the tray. */
+function checkUpright(): void {
+  const now = isPhone() && isLandscape();
+  if (now === sideways) return;
+  sideways = now;
+  $('upright').hidden = !sideways;
+  document.documentElement.classList.toggle('sideways', sideways);
+  if (sideways) {
+    sidewaysSince = performance.now();
+    // a press started before turning never lands
+    press = null;
+    hover = null;
+    return;
+  }
+  // time spent sideways isn't thinking time
+  const t = performance.now();
+  readyAt += t - Math.max(sidewaysSince, readyAt);
+  resetZoom();
+  layout();
+}
+
+/**
+ * Called every frame. Resize events on iPhone can arrive before a rotation has settled, and the old code framed the
+ * camera once, for whatever size it saw then. Comparing the canvas's real size each frame reframes it as soon as the
+ * size changes, so the picture and the tap mapping always match the screen.
+ */
+function syncView(): void {
+  checkUpright();
+  if (viewKey() !== framedFor) layout();
+}
+
+screen.orientation?.addEventListener?.('change', syncView);
+window.addEventListener('orientationchange', syncView);
+checkUpright();
 
 showBoard();
 bumpShelf();

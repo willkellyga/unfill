@@ -56,6 +56,12 @@ Details, research and the playtest plan: [gen/tuning/README.md](gen/tuning/READM
   that caches every file and answers cache-first. Fonts are bundled (`@fontsource`, OFL) instead of Google Fonts, so
   nothing comes from the network. `npm run offline-check` loads the built site as an iPhone, plays a move, cuts the
   network, reloads and keeps playing.
+- **Phones play upright** (`src/app/game/orientation.ts`): the manifest asks for portrait, which an installed Android
+  app honors. iPhone Safari and iPhone home-screen apps ignore it and have no lock API, so a phone held sideways gets a
+  "Turn your phone upright" card that covers the tray and takes its taps (tablets and computers play any way round).
+  The camera is reframed whenever the canvas's real size changes, checked every frame, because iPhone can fire resize
+  before a rotation settles. Pinch and double-tap zoom are off (viewport tag, `touch-action`, and Safari's gesture
+  events). `npm run orientation-check` turns an emulated iPhone sideways and back, with and without resize events.
 - **Hosting**: `.github/workflows/pages.yml` publishes `dist/` to GitHub Pages on every push to main, once Pages is
   switched on (Settings > Pages > Source: GitHub Actions). The Claude artifact can't be installed or play offline: it
   runs inside claude.ai's frame, where a service worker can't run.
@@ -199,6 +205,7 @@ npm run build      # type-check and build a static site into dist/ (the game and
 npm run build:single   # the game as one self-contained HTML file, dist-single/unfill.html
 npm run perf       # after a build and `npx vite preview --port 4173`: per-frame CPU time on a slowed CPU
 npm run loop-check # after a build and `npx vite preview --port 4173`: clears 30 trays in a row through real taps
+npm run orientation-check  # same setup: sideways card on phones, and the tray framed right after turning back
 ```
 
 To play on a phone, keep `npm run dev` running and open the "Network" address it prints
