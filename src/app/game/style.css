@@ -886,3 +886,104 @@ html.reduced .switch::after {
 .ptStatus {
   color: var(--muted);
 }
+
+/* ---- the Add to Home Screen card (homecard.ts) ---- */
+.intro.home {
+  z-index: 30;
+  align-items: flex-start;
+  overflow-y: auto;
+  padding-top: max(16px, env(safe-area-inset-top, 0px));
+  padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+}
+.homeInner {
+  margin: auto 0;
+  text-align: left;
+  padding: 18px 18px 10px;
+}
+.homeHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.homeHead img {
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border-radius: 11px;
+  box-shadow: 0 6px 16px -8px rgba(90, 63, 51, 0.7);
+}
+.home h2 {
+  font: 600 1.3rem/1.15 var(--display);
+  margin: 0;
+}
+.home p {
+  margin: 0 0 10px;
+  line-height: 1.4;
+  font-weight: 700;
+}
+.homeLead {
+  color: var(--muted);
+}
+.homeSteps {
+  list-style: none;
+  margin: 14px 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.homeStep {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+.homeNum {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--paper);
+  display: grid;
+  place-items: center;
+  font: 600 1rem/1 var(--display);
+}
+.homeStep .homeStepText {
+  margin: 3px 0 5px;
+  font-size: 0.95rem;
+}
+.homePic svg {
+  display: block;
+  width: 100%;
+  max-width: 205px;
+  height: auto;
+}
+.homeNote {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.home button {
+  width: 100%;
+  font-size: 1.05rem;
+  margin-top: 6px;
+}
+.home .homeLater {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+@keyframes tapRing {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+.tapRing {
+  animation: tapRing 1.4s ease-in-out infinite;
+}
+html.reduced .tapRing {
+  animation: none;
+}
