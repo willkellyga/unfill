@@ -19,9 +19,9 @@ export function niceDate(ymd: string): string {
 }
 
 export function describeRecord(r: DailyRecord): string {
-  const head = `Daily #${r.n} · ${niceDate(r.ymd)}`;
-  if (!r.cleared) return `${head} · ran out of moves · best possible ${r.best}`;
-  return `${head} · ${r.lifts} ${r.lifts === 1 ? 'lift' : 'lifts'}, best possible ${r.best}` + (isPerfect(r) ? ' · Perfect 🏆' : '');
+  const head = `#${r.n} · ${niceDate(r.ymd)}`;
+  if (!r.cleared) return `${head} · out of moves (best ${r.best})`;
+  return `${head} · ${r.lifts} lifts (best ${r.best})` + (isPerfect(r) ? ' 🏆' : '');
 }
 
 /** The squares of a result, as small HTML swatches (the share text uses emoji). */

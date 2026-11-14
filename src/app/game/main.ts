@@ -963,7 +963,7 @@ function setMood(kind: 'day' | 'daily'): void {
 
 /**
  * Put a daily on the table: today's first try, a practice replay, or a first try she left part way (`resume`). The
- * run is set aside just as it is and comes back with "Back to my run".
+ * run is set aside just as it is and comes back with "Back to run".
  */
 function enterDaily(n: number, practice: boolean, resume?: DailySave): void {
   if (lesson) return;
@@ -999,7 +999,7 @@ function enterDaily(n: number, practice: boolean, resume?: DailySave): void {
   bottle.enterAt(t);
   if (!D.lifts) fillIn = planFillIn(S.cur.board, t + 0.15);
   const p = D.puzzle;
-  const sub = D.practice ? `Practice · ${p.allowed} moves · best possible ${p.best}` : `${p.dayName} · ${p.allowed} moves · first try counts`;
+  const sub = D.practice ? `Practice · ${p.allowed} moves` : `${p.dayName} · ${p.allowed} moves`;
   banner(null, `Daily #${p.n}`, D.lifts ? `${p.dayName} · just as you left it` : sub, 2200, 'level');
 }
 
@@ -1044,19 +1044,19 @@ function showDailyDone(): void {
   $('doneTitle').textContent = !r.cleared ? 'Out of moves' : perfect ? 'Perfect!' : 'Cleared!';
   $('doneReveal').innerHTML = `Best possible was <b>${r.best}</b>`;
   let text: string;
-  if (!r.cleared) text = `The tray still had sand in it after ${r.lifts} lifts.`;
-  else if (perfect) text = `You found the best line in ${r.lifts} lifts. That earns today’s Perfect 🏆`;
-  else text = `You cleared it in ${r.lifts} lifts, ${r.lifts - r.best} more than the best. The best line is in there somewhere.`;
-  if (practice && first) text += ` Your first try: ${first.cleared ? `${first.lifts} lifts` : 'out of moves'}.`;
+  if (!r.cleared) text = `Sand left after ${r.lifts} lifts.`;
+  else if (perfect) text = `Matched in ${r.lifts} lifts 🏆`;
+  else text = `You took ${r.lifts}, ${r.lifts - r.best} over.`;
+  if (practice && first) text += ` First try: ${first.cleared ? first.lifts : 'out of moves'}.`;
   $('doneText').textContent = text;
   $('doneSquares').innerHTML = squaresHtml(r);
   const st = streaks(daily.records, todayN());
-  const next = `next Daily in ${untilMidnight(new Date())}`;
+  const next = `next in ${untilMidnight(new Date())}`;
   $('doneSmall').textContent = practice
-    ? `Practice never changes your first try · ${next}`
+    ? `Practice · ${next}`
     : ephemeral
       ? 'Test link: not recorded.'
-      : `${st.current ? `${st.current}-day streak` : 'A new streak starts tomorrow'} · ${st.perfects} ${st.perfects === 1 ? 'Perfect' : 'Perfects'} · ${next}`;
+      : `${st.current ? `${st.current}-day streak · ` : ''}${next}`;
   $('doneShare').hidden = !first;
   $('doneBack').hidden = !runS;
   card.hidden = false;
@@ -1113,31 +1113,30 @@ function renderDaily(): void {
   const D = isDaily(S) ? S : null;
   const playing = !!D && D.puzzle.n === today && !D.cleared && !D.over;
   const left = !playing && daily.cur && daily.cur.n === today && !daily.cur.practice && !rec;
-  const tray = `${p.board.cols}×${p.board.rows} tray · ${p.entry.colors} colors · ${p.allowed} moves`;
-  const ramp = `<p class="small">One tray a day, the same for everyone. Small on Monday, building to a big five-color tray on Sunday.</p>`;
+  const tray = `${p.board.cols}×${p.board.rows} · ${p.entry.colors} colors · ${p.allowed} moves`;
   let html: string;
   if (playing) {
     html =
-      `<h3>${p.dayName}’s tray is on the table</h3><p>${tray}</p>` +
+      `<h3>${p.dayName}’s Daily</h3><p>${tray}</p>` +
       `<button type="button" class="primary" data-act="close">${D?.practice ? 'Back to practice' : 'Keep going'}</button>`;
   } else if (left) {
-    html = `<h3>${p.dayName}’s tray is waiting</h3><p>${tray}</p><p class="small">Your first try is just as you left it.</p><button type="button" class="primary" data-act="resume">Keep going</button>`;
+    html = `<h3>${p.dayName}’s Daily</h3><p>${tray}</p><button type="button" class="primary" data-act="resume">Keep going</button>`;
   } else if (!rec) {
     html =
       `<h3>${p.dayName}’s Daily</h3><p>${tray}</p>` +
-      `<p class="small">Clear it in as few lifts as you can. When you’re done you’ll see the best possible, and matching it earns the Perfect 🏆. Only your first try counts.</p>` +
-      `<button type="button" class="primary" data-act="play">Play today’s Daily</button>`;
+      `<p class="small">Fewest lifts wins. Match the best for a 🏆</p>` +
+      `<button type="button" class="primary" data-act="play">Play</button>`;
   } else {
     const title = !rec.cleared ? 'Out of moves' : isPerfect(rec) ? 'Perfect! 🏆' : `Cleared in ${rec.lifts}`;
     html =
       `<h3>${title}</h3><div class="squares">${squaresHtml(rec)}</div>` +
       `<p>${rec.cleared ? `${rec.lifts} lifts` : 'Ran out of moves'} · best possible ${rec.best}</p>` +
-      `<p class="small">Next Daily in ${untilMidnight(new Date())}</p>` +
-      `<button type="button" class="primary" data-act="share">Share my result</button>` +
-      `<button type="button" data-act="practice">Practice it again</button>`;
+      `<p class="small">Next in ${untilMidnight(new Date())}</p>` +
+      `<button type="button" class="primary" data-act="share">Share</button>` +
+      `<button type="button" data-act="practice">Practice</button>`;
   }
-  if (runS) html += `<button type="button" data-act="back">Back to my run</button>`;
-  $('dailyToday').innerHTML = html + (rec || playing ? '' : ramp);
+  if (runS) html += `<button type="button" data-act="back">Back to run</button>`;
+  $('dailyToday').innerHTML = html;
   $('dailyStats').innerHTML = statsHtml(daily.records, today);
   const month = calMonth ?? monthOf(today, dailyPool.epoch);
   $('calTitle').textContent = monthTitle(month);
@@ -1147,7 +1146,7 @@ function renderDaily(): void {
   $<HTMLButtonElement>('calPrev').disabled = month[0] * 12 + month[1] <= firstMonth[0] * 12 + firstMonth[1];
   $<HTMLButtonElement>('calNext').disabled = month[0] * 12 + month[1] >= lastMonth[0] * 12 + lastMonth[1];
   const played = Object.keys(daily.records).length;
-  $('calDetail').textContent = played ? 'Tap a bottle to see how that day went.' : 'Each Daily you play gets its own bottle here.';
+  $('calDetail').textContent = played ? 'Tap a bottle for details.' : 'Each Daily adds a bottle.';
 }
 
 $('dailyToday').onclick = (e) => {
@@ -2195,8 +2194,8 @@ else if (dailyResume) enterDaily(dailyResume.n, false, dailyResume);
 if (isDaily(S)) {
   $('intro').hidden = !dailyResume;
   $('introTitle').textContent = 'Welcome back';
-  $('introText').textContent = `Your Daily #${S.puzzle.n} is just as you left it, with ${S.pool.moves} moves left.`;
-  $('introSmall').textContent = 'Only your first try counts.';
+  $('introText').textContent = `Daily #${S.puzzle.n} · ${S.pool.moves} moves left`;
+  $('introSmall').textContent = '';
   $('startBtn').textContent = 'Keep going';
 } else if (resumed && S.over) {
   // closed on the final board of a run: show how it ended
