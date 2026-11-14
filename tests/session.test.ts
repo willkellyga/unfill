@@ -47,7 +47,7 @@ function messyRun(seed: number, levels: number): Session {
     expect(s.pool.moves).toBeLessThanOrEqual(s.pool.atBoardStart);
     expect(s.pool.atBoardStart - s.pool.moves).toBe(s.taps.length);
     // pool at the start of every board holds at least par: the fairness guarantee
-    if (!s.taps.length) expect(s.pool.moves).toBeGreaterThanOrEqual(s.par);
+    if (!s.taps.length) expect(s.pool.moves).toBeGreaterThanOrEqual(s.pick.entry.par); // the solver's par, not the easier one shown on levels 1-20
     const roll = R.int(20);
     if (roll === 0 && s.restart()) {
       expect(boardsEqual(s.cur.board, s.start.board)).toBe(true);
@@ -198,5 +198,16 @@ describe('points', () => {
         expect(reload(s).over).toBe(true);
       }
     }
+  });
+});
+
+describe('easier par on levels 1-20', () => {
+  it('adds the typical extra moves (at least 1) up to level 20, and nothing after', async () => {
+    const { shownPar, PAR_CUSHION_UNTIL } = await import('../src/core/session');
+    const entry = { par: 8, metrics: { carefulGap: 0, naiveGap: 0, singles: 0, opening: 0, excess100: 250, players: { casual: 400, medium: 260, sharp: 120 } } };
+    expect(shownPar(1, entry)).toBe(11); // 2.6 extra moves rounds to 3
+    expect(shownPar(PAR_CUSHION_UNTIL, entry)).toBe(11);
+    expect(shownPar(PAR_CUSHION_UNTIL + 1, entry)).toBe(8);
+    expect(shownPar(5, { ...entry, metrics: { ...entry.metrics, players: { casual: 50, medium: 20, sharp: 0 } } })).toBe(9); // at least 1
   });
 });
