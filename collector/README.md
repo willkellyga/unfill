@@ -6,12 +6,16 @@ Will's Google account, no server to look after).
 
 ## Set it up (about 5 minutes, once)
 
+Done on Nov 14, 2026: the "Unfill playtest" Sheet is in Will's Google account and its URL is in `COLLECTOR_URL`.
+These steps are for setting it up again.
+
 1. Open **[sheets.new](https://sheets.new)** while signed in to Google, and name the sheet "Unfill playtest".
 2. In the sheet, choose **Extensions › Apps Script**. Delete the code that's there, paste in all of
    [`Code.gs`](Code.gs), and click **Save** (the disk icon).
 3. Click **Deploy › New deployment**. Next to "Select type", click the gear and choose **Web app**. Set
    **Execute as: Me** and **Who has access: Anyone**, then click **Deploy**.
-4. Click **Authorize access** and pick your account. Google says it "hasn't verified this app" because it's your own
+4. Back in the editor, with `authorize` picked next to **Run**, click **Run › Review permissions** (or **Authorize
+   access** in the deploy dialog) and pick your account. Google says it "hasn't verified this app" because it's your own
    script: click **Advanced › Go to Untitled project (unsafe)**, then **Allow**.
 5. Copy the **Web app URL** (it ends in `/exec`) and send it to Claude. It goes in `COLLECTOR_URL` in
    `src/app/game/playtest.ts`, and the game starts sending once that's merged and Pages redeploys.

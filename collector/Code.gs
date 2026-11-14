@@ -17,6 +17,13 @@ var COLUMNS = [
 ];
 var MAX_EVENTS = 100;
 
+/** Run this once from the editor (it's first, so the Run button picks it) to grant the script access to this Sheet. */
+function authorize() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  tab(ss, 'Plays', COLUMNS);
+  return ss.getName();
+}
+
 function doPost(e) {
   var body = e && e.postData ? String(e.postData.contents || '') : '';
   var lock = LockService.getScriptLock();

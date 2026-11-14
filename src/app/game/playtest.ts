@@ -11,8 +11,9 @@
  * a link with ?tester=Name), so Will can tell people apart. Nothing else about the person or the phone is sent.
  */
 
-/** Will's collector: the Apps Script web app URL (Deploy › Web app), or '' until it's set up. */
-export const COLLECTOR_URL = '';
+/** Will's collector: the Apps Script web app URL (Deploy › Web app) behind the "Unfill playtest" Sheet in his Google account. */
+export const COLLECTOR_URL =
+  'https://script.google.com/macros/s/AKfycbxyLVTdZAzsTs1T1gQO3OgO_G_0Pw4rsK8aD_-XULz48lX8xeubuMsakhh4dZj-Qt0z/exec';
 
 export const DEVICE_KEY = 'unfill-device';
 export const NAME_KEY = 'unfill-tester';
