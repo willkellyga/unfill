@@ -20,6 +20,8 @@ import { TARGETS } from './targets';
 export interface Row {
   id: string;
   type: string;
+  /** The level's role in the run, or 'daily' / 'daily-practice' for the Daily Puzzle. */
+  role: string;
   name: string;
   device: string;
   app: string;
@@ -94,6 +96,7 @@ export function readRows(table: unknown[][]): Row[] {
     out.push({
       id,
       type: String(get(r, 'type')),
+      role: String(get(r, 'role') ?? ''),
       name: String(get(r, 'name') ?? '').trim(),
       device: String(get(r, 'device')),
       app: String(get(r, 'app')),
@@ -143,9 +146,11 @@ export interface Summary {
 }
 
 const pct = (a: number, b: number) => (b ? (100 * a) / b : 0);
+export const isDailyRow = (r: Row) => r.role.startsWith('daily');
 
 export function summarize(rows: readonly Row[]): Summary {
-  const levels = rows.filter((r) => r.type === 'level');
+  // run levels only: Daily Puzzle plays (role daily / daily-practice) aren't part of a run
+  const levels = rows.filter((r) => r.type === 'level' && !isDailyRow(r));
   const byRun = new Map<string, Row[]>();
   for (const r of levels) {
     const k = `${r.device}:${r.run}`;
@@ -204,7 +209,7 @@ function report(who: string, rows: Row[]): void {
     console.log(
       `  seconds per lift: ${s.secondsPerLift.toFixed(1)} on average (thinking median ${s.thinkMedian!.toFixed(1)}, pour median ${s.pourMedian!.toFixed(1)}; pacing.ts assumes ${SECONDS_PER_TAP})`,
     );
-  const m = botMatch(rows.filter((r) => r.type === 'level' && r.outcome === 'clear'));
+  const m = botMatch(rows.filter((r) => r.type === 'level' && r.outcome === 'clear' && !isDailyRow(r)));
   if (m) {
     console.log(
       `  plays closest to: ${BOT_LABEL[m.ranked[0]]}, then ${BOT_LABEL[m.ranked[1]]}; ${m.typicalPercentile.toFixed(0)}th percentile of the typical bot (50 = typical, lower = fewer moves)` +
@@ -231,6 +236,13 @@ function main(): void {
   console.log(`${rows.length} rows from ${by.size} ${by.size === 1 ? 'tester' : 'testers'} (builds: ${apps.join(', ')})`);
   for (const [who, rs] of [...by].sort((a, z) => z[1].length - a[1].length)) report(who, rs);
   if (by.size > 1) report('Everyone', rows.slice());
+  // the Daily Puzzle's first tries: how many were cleared, and how many matched the proven best
+  const daily = rows.filter((r) => r.type === 'level' && r.role === 'daily');
+  if (daily.length) {
+    const cleared = daily.filter((r) => r.outcome === 'clear');
+    const perfect = cleared.filter((r) => r.lifts === r.par);
+    console.log(`Daily Puzzle first tries: ${daily.length}, cleared ${cleared.length}, Perfect ${perfect.length}`);
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();

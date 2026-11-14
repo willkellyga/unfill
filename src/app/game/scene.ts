@@ -58,6 +58,7 @@ export class Terrarium {
   private readonly frontPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -BLOCK_DEPTH / 2);
   private readonly ray = new THREE.Raycaster();
   private tier!: Tier;
+  private backdrops!: Record<'day' | 'daily', THREE.Texture>;
   private viewW = 1;
   private viewH = 1;
 
@@ -71,6 +72,7 @@ export class Terrarium {
 
     const s = this.scene;
     const bg = backdropTexture();
+    this.backdrops = { day: bg, daily: backdropTexture('daily') };
     s.background = bg;
     s.fog = new THREE.Fog(0xf3dcc5, 22, 46);
 
@@ -143,6 +145,12 @@ export class Terrarium {
           gl_FragColor = vec4(vec3(1.0, 0.86, 0.62) * c * m * 0.34, 1.0);
         }`,
     });
+  }
+
+  /** The everyday room, or the same room at dusk for the Daily Puzzle. */
+  setMood(mood: 'day' | 'daily'): void {
+    this.scene.background = this.backdrops[mood];
+    (this.scene.fog as THREE.Fog).color.set(mood === 'daily' ? 0xe9d5d8 : 0xf3dcc5);
   }
 
   setTier(t: Tier): void {

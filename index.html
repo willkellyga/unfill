@@ -57,6 +57,7 @@
     <footer class="foot" id="bar">
       <p class="how" id="hint" role="status">Tap a block to lift its group.</p>
       <div class="controls">
+        <button id="dailyBtn" type="button" aria-label="Daily Puzzle"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 9.8h17M8 3v4M16 3v4"/><path d="m12 12.2.95 1.9 2.1.3-1.52 1.48.36 2.1L12 17l-1.89.98.36-2.1-1.52-1.48 2.1-.3z" class="fillIcon"/></svg><span class="lbl">Daily</span><span class="dot" id="dailyDot" hidden></span></button>
         <button id="shelfBtn" type="button" aria-label="Bottle shelf"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2.8h4M10.4 2.8v3.4L8.2 9a2.2 2.2 0 0 0-.5 1.4V19a2 2 0 0 0 2 2h4.6a2 2 0 0 0 2-2v-8.6c0-.5-.2-1-.5-1.4l-2.2-2.8V2.8"/><path d="M7.8 14.5h8.4"/></svg><span class="lbl">Shelf</span><span class="badge" id="shelfCount" hidden>0</span></button>
         <button id="gear" type="button" aria-label="Settings" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.6M12 18.9v2.6M21.5 12h-2.6M5.1 12H2.5M18.7 5.3l-1.8 1.8M7.1 16.9l-1.8 1.8M18.7 18.7l-1.8-1.8M7.1 7.1 5.3 5.3"/><circle cx="12" cy="12" r="6.6"/></svg><span class="lbl">Settings</span></button>
       </div>
@@ -149,12 +150,50 @@
       <div class="shelfScroll"><div class="shelfGrid" id="shelfGrid"></div></div>
     </section>
 
+    <section class="shelf daily" id="daily" hidden role="dialog" aria-modal="true" aria-labelledby="dailyTitle">
+      <header class="shelfHead">
+        <div>
+          <h2 id="dailyTitle">Daily Puzzle</h2>
+          <small id="dailyNote"></small>
+        </div>
+        <button id="dailyClose" type="button" aria-label="Close the Daily Puzzle"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </header>
+      <div class="shelfScroll">
+        <div class="dailyBody">
+          <div class="dailyToday" id="dailyToday"></div>
+          <div class="dailyStats" id="dailyStats"></div>
+          <div class="calHead">
+            <button id="calPrev" type="button" aria-label="Previous month"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg></button>
+            <b id="calTitle"></b>
+            <button id="calNext" type="button" aria-label="Next month"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
+          </div>
+          <div class="calendar" id="calendar"></div>
+          <p class="shelfDetail" id="calDetail" aria-live="polite"></p>
+        </div>
+      </div>
+    </section>
+
+    <div class="intro dailyDone" id="dailyDone" hidden role="dialog" aria-modal="true" aria-labelledby="doneTitle">
+      <div class="introInner">
+        <small class="doneKicker" id="doneKicker"></small>
+        <h1 id="doneTitle">Cleared!</h1>
+        <p class="reveal" id="doneReveal"></p>
+        <p id="doneText"></p>
+        <div class="squares" id="doneSquares" aria-hidden="true"></div>
+        <p class="small" id="doneSmall"></p>
+        <button id="doneShare" type="button" class="primary">Share</button>
+        <button id="doneCalendar" type="button">Calendar</button>
+        <button id="doneBack" type="button">Back to run</button>
+      </div>
+    </div>
+
     <div class="intro" id="over" hidden role="dialog" aria-modal="true" aria-labelledby="overTitle">
       <div class="introInner">
         <h1 id="overTitle">Out of moves</h1>
         <p id="overText"></p>
         <p class="small" id="overBest"></p>
         <button id="againBtn" type="button" class="primary">Play again</button>
+        <button id="overDaily" type="button" hidden>Play today’s Daily</button>
         <button id="overShelf" type="button">See your shelf</button>
       </div>
     </div>

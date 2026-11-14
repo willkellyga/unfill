@@ -1,4 +1,4 @@
-import { SAND_HEX } from './palette';
+import { DAILY_HEX, SAND_HEX } from './palette';
 
 /**
  * The moves card at the top center (Nov 14, Will): the moves left in big type, and under it this level's par as a
@@ -11,11 +11,18 @@ export interface GoalState {
   /** Moves made on this level so far, oldest first, as the sand color each one lifted. */
   lifted: readonly number[];
   par: number;
+  /** A Daily Puzzle: its best stays secret until it's done, so the row is just the lifts so far, in the daily's sand. */
+  hidden?: boolean;
 }
 
 /** The par track under the moves count, as HTML. */
 export function goalHtml(g: GoalState): string {
   const used = g.lifted.length;
+  if (g.hidden) {
+    const lifted = g.lifted.map((c) => `<i class="slot on" style="--c:${DAILY_HEX[c % DAILY_HEX.length]}"></i>`);
+    const size = used > 16 ? 'tiny' : used > 11 ? 'small' : '';
+    return `<span class="track ${size}" aria-hidden="true">${lifted.join('')}</span><span class="trackLabel">${used} ${used === 1 ? 'lift' : 'lifts'}</span>`;
+  }
   const over = Math.max(0, used - g.par);
   const n = Math.max(g.par, used);
   const slots: string[] = [];
@@ -34,6 +41,7 @@ export function goalHtml(g: GoalState): string {
 /** What a screen reader hears for the par track. */
 export function goalLabel(g: GoalState): string {
   const used = g.lifted.length;
+  if (g.hidden) return `${used} ${used === 1 ? 'lift' : 'lifts'} so far`;
   if (used > g.par) return `${used} lifts, ${used - g.par} over par ${g.par}`;
   return `${used} of par ${g.par} lifts used`;
 }

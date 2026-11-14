@@ -5,6 +5,16 @@ import {
   EMPTY,
   Session,
   TutorialSession,
+  DailySession,
+  dailyNumber,
+  dailyPuzzle,
+  isPerfect,
+  localYmd,
+  shareText,
+  streaks,
+  type DailyPool,
+  type DailyRecord,
+  type DailySave,
   countBlocks,
   groupAt,
   type Board,
@@ -14,12 +24,13 @@ import {
 } from '../../core';
 import libraryText from '../../library/boards.json?raw';
 import curvesText from '../../library/par-curves.json?raw';
+import dailyText from '../../library/daily.json?raw';
 import { Audio } from './audio';
 import { Blocks } from './blocks';
 import { groupMasks } from './merged';
 import { Bottle } from './bottle';
 import { Grains } from './grains';
-import { SAND, SAND_HEX, sandColor, SAND_PITCH } from './palette';
+import { DAILY_SAND, SAND, sandColor, sandHex, SAND_PITCH, usePalette } from './palette';
 import { FIRM, fallTime, planPour, type PourPlan } from './pour';
 import {
   decodeProgress,
@@ -37,6 +48,7 @@ import { SLOW_FRAME_MS, TIERS, type Tier, type TierName } from './quality';
 import { BLOCK, BOTTLE_SCALE, Terrarium } from './scene';
 import { renderShelf } from './shelf';
 import { goalHtml, goalLabel } from './hud';
+import { calendarHtml, describeRecord, monthOf, monthTitle, niceDate, shiftMonth, squaresHtml, statsHtml, untilMidnight } from './dailyui';
 
 // ---------------------------------------------------------------- setup
 
@@ -161,7 +173,9 @@ const SHELF_KEY = 'unfill-shelf';
 const params = new URLSearchParams(location.search);
 /** `?tray=N` jumps straight to a level for testing, without touching her saved game. */
 const trayParam = Number(params.get('tray')) || 0;
-const ephemeral = trayParam > 0 || params.has('nosave');
+/** `?daily=N` opens Daily #N straight away, for testing, without recording it or touching her saved game. */
+const dailyParam = Number(params.get('daily')) || 0;
+const ephemeral = trayParam > 0 || dailyParam > 0 || params.has('nosave');
 
 declare const __BUILD__: string;
 /**
@@ -222,6 +236,37 @@ const firstPlay = params.has('lesson') || (!ephemeral && !navigator.webdriver &&
 /** The run's session, even while the lesson is on screen. */
 const run = (): Session => runS ?? S;
 
+// ---------------------------------------------------------------- the Daily Puzzle: state and storage
+
+const DAILY_KEY = 'unfill-daily';
+const dailyPool: DailyPool = JSON.parse(dailyText);
+/** Her daily results (first tries only, by daily number) and a first try in progress, if she left one. */
+interface DailyStore {
+  v: 1;
+  records: Record<number, DailyRecord>;
+  cur: DailySave | null;
+}
+function loadDaily(): DailyStore {
+  const d = loadJson(DAILY_KEY) as DailyStore | null;
+  const records: Record<number, DailyRecord> = {};
+  if (d && d.records && typeof d.records === 'object') {
+    for (const [k, r] of Object.entries(d.records)) {
+      if (r && Number.isInteger(r.n) && r.n === Number(k) && Array.isArray(r.layers) && typeof r.cleared === 'boolean') records[r.n] = r;
+    }
+  }
+  const cur = d && d.cur && Number.isInteger(d.cur.n) && Array.isArray(d.cur.taps) ? d.cur : null;
+  return { v: 1, records, cur };
+}
+const daily: DailyStore = loadDaily();
+function saveDaily(): void {
+  if (!ephemeral) store.set(DAILY_KEY, JSON.stringify(daily));
+}
+/** Today's daily number, from her own calendar day (a clock set before Daily #1 still gets #1). */
+const todayN = () => Math.max(1, dailyNumber(localYmd(new Date()), dailyPool.epoch));
+const isDaily = (s: Session): s is DailySession => s instanceof DailySession;
+/** The daily just finished, for the result card. */
+let dailyResult: { record: DailyRecord; practice: boolean } | null = null;
+
 // ---------------------------------------------------------------- points and the high score
 
 const BEST_KEY = 'unfill-best';
@@ -236,6 +281,10 @@ let overShown = false;
 /** Out of moves with sand still in the tray: the run is over. Shows the final score against the best. */
 function showOver(): void {
   overShown = true;
+  if (isDaily(S)) {
+    showDailyDone();
+    return;
+  }
   clearBanner();
   const levels = S.n - 1;
   $('overText').textContent =
@@ -243,12 +292,21 @@ function showOver(): void {
   const isBest = S.score > 0 && S.score >= best && S.score > bestAtRunStart;
   $('overBest').textContent = isBest ? 'A new high score!' : `High score: ${fmt(best)}`;
   $('overBest').classList.toggle('best', isBest);
+  // a run that ends is a good moment for today's Daily, if it's still to play
+  $('overDaily').hidden = ephemeral || !!daily.records[todayN()];
   $('over').hidden = false;
   $('againBtn').focus();
 }
 
 function newRun(): void {
   if (lesson) endLesson();
+  // from a daily, the daily's first try stays saved to finish later; the run that was set aside is the one replaced
+  if (isDaily(S)) {
+    S = runS!;
+    runS = null;
+    setMood('day');
+    $('dailyDone').hidden = true;
+  }
   // leaving a level part way through for a new run (from Settings)
   if (!S.over && !S.cleared) logLevelEnd('quit');
   $('over').hidden = true;
@@ -261,10 +319,16 @@ function newRun(): void {
 }
 
 function persist(): void {
-  if (!ephemeral && !lesson) store.set(SAVE_KEY, JSON.stringify(S.toSave()));
+  if (ephemeral || lesson) return;
+  if (isDaily(S)) {
+    // only a first try is kept to come back to; practice starts fresh each time and leaves it alone
+    if (S.practice) return;
+    daily.cur = S.cleared || S.over ? null : S.toDailySave();
+    saveDaily();
+  } else store.set(SAVE_KEY, JSON.stringify(S.toSave()));
 }
 function persistShelf(): void {
-  if (!ephemeral && !lesson) store.set(SHELF_KEY, JSON.stringify(S.shelf));
+  if (!ephemeral && !lesson) store.set(SHELF_KEY, JSON.stringify(run().shelf));
 }
 
 /** The level on screen ended (cleared, out of moves, or left for a new run): its row goes to the playtest outbox. */
@@ -272,12 +336,14 @@ function logLevelEnd(outcome: Outcome, points?: number): void {
   if (!playtest || lesson) return;
   const e = S.pick.entry;
   const st = installState();
+  // daily plays are tagged by role ("daily" for the first try, "daily-practice" after), with n the daily's number
+  const role = isDaily(S) ? (S.practice ? 'daily-practice' : 'daily') : S.pick.slot.role;
   playtest.levelEnded({
     outcome,
     run: S.seed,
     n: S.n,
     board: e.id,
-    role: S.pick.slot.role,
+    role,
     tier: e.tier,
     cols: e.cols,
     rows: e.rows,
@@ -289,7 +355,7 @@ function logLevelEnd(outcome: Outcome, points?: number): void {
     movesLeft: S.pool.moves,
     lifts: S.lifts,
     points,
-    score: S.score,
+    score: isDaily(S) ? undefined : S.score,
     taps: S.taps.slice(),
     mirror: S.pick.transform.mirror,
     perm: S.pick.transform.perm.slice(),
@@ -510,6 +576,15 @@ function doLift(cell: number): void {
 }
 
 function afterLift(out: { keepsake?: Keepsake | null }): void {
+  if (isDaily(S)) {
+    if (S.cleared || S.over) {
+      logLevelEnd(S.cleared ? 'clear' : 'out');
+      finishDaily(S);
+    }
+    persist();
+    updateHud();
+    return;
+  }
   if (out.keepsake) logLevelEnd('clear', out.keepsake.points);
   else if (S.over) logLevelEnd('out');
   if (out.keepsake && !lesson) {
@@ -780,21 +855,22 @@ function maybeCork(t: number): void {
   if (!reduced) launchSparkle(bottle.corkSeatTime);
   clearBanner();
   window.setTimeout(() => {
-    if (!S.cleared || lesson) return;
+    if (!S.cleared || lesson || isDaily(S)) return;
     clearedBanner(S.shelf[S.shelf.length - 1]);
     countUp(shownScore, S.score, 0.9, 'score');
     shownScore = S.score;
   }, 450);
   // the corked bottle slides off along the rail toward the shelf, then the next tray pours in
   bottle.exitAt(bottle.corkSeatTime + 0.75);
-  if (!lesson) window.setTimeout(bumpShelf, (bottle.corkSeatTime + 1.1 - t) * 1000);
+  if (!lesson) window.setTimeout(isDaily(S) ? bumpDaily : bumpShelf, (bottle.corkSeatTime + 1.1 - t) * 1000);
   pendingNext = bottle.corkSeatTime + 1.2;
 }
 
 function maybeNextLevel(t: number): void {
   if (pendingNext !== null && t >= pendingNext) {
     pendingNext = null;
-    nextLevel();
+    if (isDaily(S)) showDailyDone();
+    else nextLevel();
   }
 }
 
@@ -826,6 +902,11 @@ function clearBanner(): void {
 
 /** As a level pours in: its number, par and the moves it brought. Notes a bigger tray or a new color. */
 function levelBanner(prev: { cols: number; rows: number; colors: number } | null): void {
+  if (isDaily(S)) {
+    const p = S.puzzle;
+    banner(null, `Daily #${p.n}`, S.practice ? `Practice · ${p.allowed} moves` : `${p.dayName} · ${S.pool.moves} moves left`, 1700, 'level');
+    return;
+  }
   const { cols, rows } = S.cur.board;
   const colors = S.pick.entry.colors;
   let sub = prev ? `par ${S.par} · +${S.grant} moves` : `par ${S.par} · ${S.pool.moves} moves`;
@@ -851,8 +932,8 @@ function clearedBanner(k: Keepsake | undefined): void {
 
 function bumpShelf(): void {
   const b = $('shelfBtn');
-  $('shelfCount').textContent = String(S.shelf.length);
-  $('shelfCount').hidden = S.shelf.length === 0;
+  $('shelfCount').textContent = String(run().shelf.length);
+  $('shelfCount').hidden = run().shelf.length === 0;
   b.classList.remove('bump');
   void b.offsetWidth;
   b.classList.add('bump');
@@ -868,6 +949,259 @@ function openShelf(): void {
 
 function closeShelf(): void {
   $('shelf').hidden = true;
+}
+
+// ---------------------------------------------------------------- the Daily Puzzle: playing it
+
+/** The everyday room and sands, or the Daily Puzzle's dusk room and its own sands. */
+function setMood(kind: 'day' | 'daily'): void {
+  usePalette(kind);
+  T.setMood(kind);
+  document.body.classList.toggle('dailyMode', kind === 'daily');
+  if (more.open) renderPatKey();
+}
+
+/**
+ * Put a daily on the table: today's first try, a practice replay, or a first try she left part way (`resume`). The
+ * run is set aside just as it is and comes back with "Back to run".
+ */
+function enterDaily(n: number, practice: boolean, resume?: DailySave): void {
+  if (lesson) return;
+  audio.unlock();
+  $('daily').hidden = true;
+  $('dailyDone').hidden = true;
+  $('over').hidden = true;
+  $('intro').hidden = true;
+  const was = S;
+  if (!isDaily(was)) {
+    // a run level that was just cleared goes on to its next level first, so the run comes back ready to play
+    if (S.cleared) {
+      pendingNext = null;
+      S.next();
+    }
+    persist();
+    runS = S;
+  } else if (!was.cleared && !was.over && !was.practice) {
+    persist();
+  }
+  const puzzle = dailyPuzzle(dailyPool, boards, n);
+  let D = resume ? DailySession.restoreDaily(boards, puzzle, resume) : null;
+  if (!D) {
+    D = new DailySession(boards, puzzle, practice);
+    D.begin();
+  }
+  S = D;
+  overShown = false;
+  dailyResult = null;
+  setMood('daily');
+  showBoard();
+  const t = now();
+  bottle.enterAt(t);
+  if (!D.lifts) fillIn = planFillIn(S.cur.board, t + 0.15);
+  const p = D.puzzle;
+  const sub = D.practice ? `Practice · ${p.allowed} moves` : `${p.dayName} · ${p.allowed} moves`;
+  banner(null, `Daily #${p.n}`, D.lifts ? `${p.dayName} · just as you left it` : sub, 2200, 'level');
+}
+
+/** Back from a daily to the run, just as it was. */
+function leaveDaily(): void {
+  if (!isDaily(S) || !runS) return;
+  if (!S.cleared && !S.over) persist();
+  $('daily').hidden = true;
+  $('dailyDone').hidden = true;
+  S = runS;
+  runS = null;
+  overShown = false;
+  setMood('day');
+  showBoard();
+  const t = now();
+  bottle.enterAt(t);
+  if (!S.lifts) fillIn = planFillIn(S.cur.board, t + 0.15);
+  shownScore = S.score;
+  levelBanner(null);
+  updateHud();
+}
+
+/** A daily ended (cleared, or out of moves): a first try is recorded for good; practice never changes it. */
+function finishDaily(D: DailySession): void {
+  const record = D.record(Date.now());
+  if (!D.practice && !ephemeral && !daily.records[record.n]) daily.records[record.n] = record;
+  if (!D.practice) daily.cur = null;
+  saveDaily();
+  dailyResult = { record, practice: D.practice };
+}
+
+/** The reveal: "Best possible was X", and whether she earned the Perfect. */
+function showDailyDone(): void {
+  if (!dailyResult || !isDaily(S)) return;
+  const { record: r, practice } = dailyResult;
+  const p = S.puzzle;
+  const first = daily.records[r.n];
+  const perfect = isPerfect(r);
+  const card = $('dailyDone');
+  card.classList.toggle('perfect', perfect);
+  $('doneKicker').textContent = practice ? `Practice · Daily #${r.n}` : `Daily #${r.n} · ${p.dayName}`;
+  $('doneTitle').textContent = !r.cleared ? 'Out of moves' : perfect ? 'Perfect!' : 'Cleared!';
+  $('doneReveal').innerHTML = `Best possible was <b>${r.best}</b>`;
+  let text: string;
+  if (!r.cleared) text = `Sand left after ${r.lifts} lifts.`;
+  else if (perfect) text = `Matched in ${r.lifts} lifts 🏆`;
+  else text = `You took ${r.lifts}, ${r.lifts - r.best} over.`;
+  if (practice && first) text += ` First try: ${first.cleared ? first.lifts : 'out of moves'}.`;
+  $('doneText').textContent = text;
+  $('doneSquares').innerHTML = squaresHtml(r);
+  const st = streaks(daily.records, todayN());
+  const next = `next in ${untilMidnight(new Date())}`;
+  $('doneSmall').textContent = practice
+    ? `Practice · ${next}`
+    : ephemeral
+      ? 'Test link: not recorded.'
+      : `${st.current ? `${st.current}-day streak · ` : ''}${next}`;
+  $('doneShare').hidden = !first;
+  $('doneBack').hidden = !runS;
+  card.hidden = false;
+  if (perfect && !practice) audio.chime(0.1);
+  (first ? $('doneShare') : $('doneCalendar')).focus();
+}
+
+/** Share her first try at a daily, Wordle style: the share sheet on a phone, the clipboard elsewhere. */
+async function shareDaily(r: DailyRecord): Promise<void> {
+  const url = location.origin + location.pathname;
+  const text = shareText(r, dailyPuzzle(dailyPool, boards, r.n).dayName, /^https?:/.test(url) ? url : '');
+  const nav = navigator as Navigator & { share?: (d: { text: string }) => Promise<void> };
+  if (nav.share && matchMedia('(pointer: coarse)').matches) {
+    try {
+      await nav.share({ text });
+      return;
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError') return;
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('Result copied: paste it in a message');
+  } catch {
+    toast('Copying is blocked here');
+  }
+}
+
+// ---------------------------------------------------------------- the Daily Puzzle: its screen and calendar shelf
+
+let calMonth: [number, number] | null = null;
+
+function openDaily(): void {
+  if (lesson) return;
+  audio.unlock();
+  more.open = false;
+  closeShelf();
+  calMonth = monthOf(todayN(), dailyPool.epoch);
+  renderDaily();
+  $('daily').hidden = false;
+}
+
+/** Closing the daily screen after a finished daily goes back to the run: there's nothing left on the table. */
+function closeDaily(): void {
+  $('daily').hidden = true;
+  if (isDaily(S) && (S.cleared || S.over) && runS) leaveDaily();
+}
+
+function renderDaily(): void {
+  const today = todayN();
+  const p = dailyPuzzle(dailyPool, boards, today);
+  const rec = daily.records[today];
+  $('dailyNote').textContent = `#${today} · ${niceDate(p.ymd)}`;
+  const D = isDaily(S) ? S : null;
+  const playing = !!D && D.puzzle.n === today && !D.cleared && !D.over;
+  const left = !playing && daily.cur && daily.cur.n === today && !daily.cur.practice && !rec;
+  const tray = `${p.board.cols}×${p.board.rows} · ${p.entry.colors} colors · ${p.allowed} moves`;
+  let html: string;
+  if (playing) {
+    html =
+      `<h3>${p.dayName}’s Daily</h3><p>${tray}</p>` +
+      `<button type="button" class="primary" data-act="close">${D?.practice ? 'Back to practice' : 'Keep going'}</button>`;
+  } else if (left) {
+    html = `<h3>${p.dayName}’s Daily</h3><p>${tray}</p><button type="button" class="primary" data-act="resume">Keep going</button>`;
+  } else if (!rec) {
+    html =
+      `<h3>${p.dayName}’s Daily</h3><p>${tray}</p>` +
+      `<p class="small">Fewest lifts wins. Match the best for a 🏆</p>` +
+      `<button type="button" class="primary" data-act="play">Play</button>`;
+  } else {
+    const title = !rec.cleared ? 'Out of moves' : isPerfect(rec) ? 'Perfect! 🏆' : `Cleared in ${rec.lifts}`;
+    html =
+      `<h3>${title}</h3><div class="squares">${squaresHtml(rec)}</div>` +
+      `<p>${rec.cleared ? `${rec.lifts} lifts` : 'Ran out of moves'} · best possible ${rec.best}</p>` +
+      `<p class="small">Next in ${untilMidnight(new Date())}</p>` +
+      `<button type="button" class="primary" data-act="share">Share</button>` +
+      `<button type="button" data-act="practice">Practice</button>`;
+  }
+  if (runS) html += `<button type="button" data-act="back">Back to run</button>`;
+  $('dailyToday').innerHTML = html;
+  $('dailyStats').innerHTML = statsHtml(daily.records, today);
+  const month = calMonth ?? monthOf(today, dailyPool.epoch);
+  $('calTitle').textContent = monthTitle(month);
+  $('calendar').innerHTML = calendarHtml(daily.records, today, month, dailyPool.epoch);
+  const firstMonth = monthOf(1, dailyPool.epoch);
+  const lastMonth = monthOf(today, dailyPool.epoch);
+  $<HTMLButtonElement>('calPrev').disabled = month[0] * 12 + month[1] <= firstMonth[0] * 12 + firstMonth[1];
+  $<HTMLButtonElement>('calNext').disabled = month[0] * 12 + month[1] >= lastMonth[0] * 12 + lastMonth[1];
+  const played = Object.keys(daily.records).length;
+  $('calDetail').textContent = played ? 'Tap a bottle for details.' : 'Each Daily adds a bottle.';
+}
+
+$('dailyToday').onclick = (e) => {
+  const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
+  const today = todayN();
+  if (act === 'close') closeDaily();
+  else if (act === 'play') enterDaily(today, false);
+  else if (act === 'resume') enterDaily(today, false, daily.cur ?? undefined);
+  else if (act === 'practice') enterDaily(today, true);
+  else if (act === 'share' && daily.records[today]) void shareDaily(daily.records[today]);
+  else if (act === 'back') leaveDaily();
+};
+$('calendar').onclick = (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-n]');
+  if (!b) return;
+  for (const x of $('calendar').querySelectorAll('.sel')) x.classList.remove('sel');
+  b.classList.add('sel');
+  const n = Number(b.dataset.n);
+  const r = daily.records[n];
+  $('calDetail').textContent = r ? describeRecord(r) : b.getAttribute('aria-label') ?? '';
+};
+$('calPrev').onclick = () => {
+  calMonth = shiftMonth(calMonth ?? monthOf(todayN(), dailyPool.epoch), -1);
+  renderDaily();
+};
+$('calNext').onclick = () => {
+  calMonth = shiftMonth(calMonth ?? monthOf(todayN(), dailyPool.epoch), 1);
+  renderDaily();
+};
+$('dailyBtn').onclick = openDaily;
+$('dailyClose').onclick = closeDaily;
+$('daily').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeDaily();
+});
+$('doneShare').onclick = () => {
+  const r = dailyResult && daily.records[dailyResult.record.n];
+  if (r) void shareDaily(r);
+};
+$('doneCalendar').onclick = () => {
+  $('dailyDone').hidden = true;
+  openDaily();
+};
+$('doneBack').onclick = leaveDaily;
+
+/** A dot on the Daily button while today's is still to play. */
+function syncDailyDot(): void {
+  const today = todayN();
+  $('dailyDot').hidden = ephemeral || !!daily.records[today] || (isDaily(S) && S.puzzle.n === today);
+}
+
+function bumpDaily(): void {
+  const b = $('dailyBtn');
+  b.classList.remove('bump');
+  void b.offsetWidth;
+  b.classList.add('bump');
 }
 
 // ---------------------------------------------------------------- drawing
@@ -1144,16 +1478,23 @@ const fmt = (v: number) => v.toLocaleString('en-US');
 function updateHud(): void {
   if (!$('moves').classList.contains('pour')) $('moves').textContent = String(S.pool.moves);
   $('movesLabel').textContent = S.pool.moves === 1 ? 'move left' : 'moves left';
-  $('levelWord').textContent = lesson ? 'lesson' : 'level';
-  $('levelNum').textContent = String(S.n);
-  // the moves made on this tray against its par, each as the color it lifted
-  const goal = { lifted: S.taps.map((cell, k) => S.history[k].board.cells[cell]), par: S.par };
+  const D = isDaily(S) ? S : null;
+  $('levelWord').textContent = lesson ? 'lesson' : D ? 'daily' : 'level';
+  $('levelNum').textContent = D ? `#${D.puzzle.n}` : String(S.n);
+  // the moves made on this tray against its par, each as the color it lifted; a daily's best stays hidden until it's done
+  const goal = { lifted: S.taps.map((cell, k) => S.history[k].board.cells[cell]), par: S.par, hidden: !!D };
   $('goal').innerHTML = goalHtml(goal);
   $('goal').setAttribute('aria-label', goalLabel(goal));
   $('movesPill').dataset.lifts = String(S.lifts);
-  $('movesPill').classList.toggle('overPar', S.lifts > S.par);
-  if (!$('score').classList.contains('pour')) $('score').textContent = fmt(shownScore);
-  $('best').textContent = `best ${fmt(Math.max(best, run().score))}`;
+  $('movesPill').classList.toggle('overPar', !D && S.lifts > S.par);
+  if (D) {
+    $('score').textContent = D.practice ? '–' : String(streaks(daily.records, todayN()).current);
+    $('best').textContent = D.practice ? 'practice' : 'day streak';
+  } else {
+    if (!$('score').classList.contains('pour')) $('score').textContent = fmt(shownScore);
+    $('best').textContent = `best ${fmt(Math.max(best, run().score))}`;
+  }
+  syncDailyDot();
   $('movesPill').classList.toggle('low', S.pool.moves <= 3 && !S.cleared && !lesson);
   setHint('');
 }
@@ -1283,8 +1624,10 @@ function renderPatKey(): void {
   const el = $('patKey');
   const svgFor = (sand: number): string => {
     const k = patternFor(sand, patterns);
-    const fill = SAND_HEX[sand];
-    const ink = 'rgba(70,45,35,0.32)';
+    const fill = sandHex(sand);
+    // as in the block shader: dark sands (the daily's indigo) get light marks
+    const rgb = [1, 3, 5].map((i) => parseInt(fill.slice(i, i + 2), 16) / 255);
+    const ink = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] < 0.42 ? 'rgba(255,255,255,0.45)' : 'rgba(70,45,35,0.32)';
     const id = `pk${sand}`;
     const defs = [
       '',
@@ -1357,7 +1700,7 @@ let homeOpen = false;
 function showHomeCard(): void {
   homeOpen = true;
   const st = installState();
-  $('homeInner').innerHTML = homeCardHtml({ kind: deviceKind, prompt: st.prompt, hasProgress: resumed || S.shelf.length > 0 });
+  $('homeInner').innerHTML = homeCardHtml({ kind: deviceKind, prompt: st.prompt, hasProgress: resumed || run().shelf.length > 0 });
   $('homeCard').hidden = false;
   const install = document.getElementById('homeInstall');
   if (install)
@@ -1415,6 +1758,7 @@ $('copyProgress').onclick = async () => {
     save: run().toSave(),
     shelf: run().shelf,
     best: Math.max(best, run().score),
+    daily: { records: daily.records },
     device: playtest?.device,
     name: playtest?.name || undefined,
   });
@@ -1462,6 +1806,11 @@ $('loadProgress').onclick = () => {
   store.set(SAVE_KEY, JSON.stringify(p.save));
   store.set(SHELF_KEY, JSON.stringify(shelf));
   store.set(BEST_KEY, String(Math.max(best, p.best)));
+  // daily first tries from the other side join the ones here (a day played on both keeps this side's)
+  if (p.daily) {
+    const records = { ...(p.daily.records as Record<number, DailyRecord>), ...daily.records };
+    store.set(DAILY_KEY, JSON.stringify({ v: 1, records, cur: daily.cur }));
+  }
   // the same player on both sides: keep one playtest id (and their name) for Safari and the home-screen app
   if (p.device) store.set(DEVICE_KEY, p.device);
   if (playtest && p.name && !playtest.name) playtest.name = p.name;
@@ -1592,7 +1941,7 @@ function timingSummary(): { taps: number; think: number; anim: number } | null {
  * untouched (and its save stays as it was), the lesson's session plays in its place, then the run comes back.
  */
 function startLesson(): void {
-  if (lesson) return;
+  if (lesson || isDaily(S)) return;
   pendingNext = null;
   fastForward();
   clearBanner();
@@ -1742,6 +2091,7 @@ $('lessonGo').onclick = () => {
 };
 $('replayLesson').onclick = () => {
   audio.unlock();
+  if (isDaily(S)) leaveDaily();
   startLesson();
 };
 
@@ -1752,6 +2102,11 @@ $('againBtn').onclick = () => {
   newRun();
 };
 $('overShelf').onclick = openShelf;
+$('overDaily').onclick = () => {
+  const today = todayN();
+  if (daily.cur && daily.cur.n === today && !daily.cur.practice) enterDaily(today, false, daily.cur);
+  else enterDaily(today, false);
+};
 $('shelfBtn').onclick = openShelf;
 $('shelfClose').onclick = closeShelf;
 $('shelf').addEventListener('keydown', (e) => {
@@ -1761,7 +2116,7 @@ $('startBtn').onclick = () => {
   audio.unlock();
   $('intro').hidden = true;
   if (tierChoice === 'auto') tierCheck = { until: performance.now() + 2000, sum: 0, count: 0 };
-  if (firstPlay) startLesson();
+  if (firstPlay && !isDaily(S)) startLesson();
   else levelBanner(null);
   // time spent on the intro card isn't thinking time
   readyAt = performance.now();
@@ -1832,7 +2187,17 @@ checkUpright();
 showBoard();
 bumpShelf();
 $('shelfBtn').classList.remove('bump');
-if (resumed && S.over) {
+// a daily first try left part way comes back as she left it (or ?daily=N, a test link)
+const dailyResume = dailyParam ? null : daily.cur && !daily.cur.practice && daily.cur.taps.length ? daily.cur : null;
+if (dailyParam) enterDaily(dailyParam, false);
+else if (dailyResume) enterDaily(dailyResume.n, false, dailyResume);
+if (isDaily(S)) {
+  $('intro').hidden = !dailyResume;
+  $('introTitle').textContent = 'Welcome back';
+  $('introText').textContent = `Daily #${S.puzzle.n} · ${S.pool.moves} moves left`;
+  $('introSmall').textContent = '';
+  $('startBtn').textContent = 'Keep going';
+} else if (resumed && S.over) {
   // closed on the final board of a run: show how it ended
   $('intro').hidden = true;
 } else if (resumed) {
@@ -1841,7 +2206,7 @@ if (resumed && S.over) {
   $('introSmall').textContent = S.taps.length ? 'Your tray is just as you left it.' : 'The next tray is ready.';
   $('startBtn').textContent = 'Keep playing';
 }
-if (firstPlay && !(resumed && S.over)) {
+if (firstPlay && !isDaily(S) && !(resumed && S.over)) {
   $('introTitle').textContent = 'Unfill';
   $('introText').textContent = 'Lift the colors out of a tray of sand to fill a bottle for your shelf.';
   $('introSmall').textContent = 'First, a quick lesson.';
@@ -1858,7 +2223,7 @@ function warmup(): void {
   // builds its pipelines too, not just the shader programs.
   const warm = new THREE.Group();
   const geo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
-  const mats = [...bottle.warmables(SAND), blocks.ghostMaterial];
+  const mats = [...bottle.warmables(SAND), ...bottle.warmables(DAILY_SAND), blocks.ghostMaterial];
   mats.forEach((m, i) => {
     const mesh = new THREE.Mesh(geo, m);
     mesh.position.set(-1 + (i % 4) * 0.5, T.rows / 2 + Math.floor(i / 4) * 0.5, 0);
@@ -1916,4 +2281,19 @@ requestAnimationFrame(frame);
   grains: () => ({ busyUntil: grains.busyUntil, cap: grains.capacity }),
   lesson: () => (lesson ? { n: S.n, target: lesson.target(), coach: $('coach').textContent, done: !$('lessonDone').hidden } : null),
   startLesson: () => startLesson(),
+  daily: {
+    open: () => openDaily(),
+    play: (n?: number, practice = false) => enterDaily(n ?? todayN(), practice),
+    back: () => leaveDaily(),
+    today: () => todayN(),
+    state: () => {
+      const D = isDaily(S) ? S : null;
+      return D
+        ? { on: true, n: D.puzzle.n, best: D.puzzle.best, allowed: D.puzzle.allowed, practice: D.practice, lifts: D.lifts, cleared: D.cleared, over: D.over }
+        : { on: false };
+    },
+    records: () => daily.records,
+    doneShown: () => !$('dailyDone').hidden,
+    screenShown: () => !$('daily').hidden,
+  },
 };

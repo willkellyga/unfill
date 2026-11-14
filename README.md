@@ -3,7 +3,25 @@
 A cozy, phone-first web puzzle. This repository has milestone 1 (the rules lab: a flat 2D test board on the shared
 rules core), milestone 2 (the board library: generator, solver, difficulty rating and progression), milestone 3
 (the move economy), milestone 4 (the 3D terrarium slice), milestone 5 (the full game loop), milestone 6 (polish: settings, color patterns, reduced motion, home-screen app)
-and milestone 7 (tuning par and the moves with bot runs), plus automatic playtest upload.
+and milestone 7 (tuning par and the moves with bot runs), plus automatic playtest upload and the Daily Puzzle.
+
+## Daily Puzzle (Nov 14, 2026)
+
+One tray a day, the same for everyone, picked from the player's local date with no server. Will's rules: the daily
+has its own sand colors (a dusk set: tangerine, teal, orchid, butter, indigo, checked for color-blind players and
+kept apart by the same patterns), a fixed move allowance, and once it's done it shows **Best possible was X**.
+Clearing it in exactly X earns the **Perfect** 🏆. Only the first try counts; replays are practice. A finished daily
+can be shared Wordle style (one colored square per lift), and every day played gets its own bottle on a calendar
+shelf with a streak. The week ramps: a small 6×7 tray on Monday, building to an 8×10 five-color tray on Sunday.
+
+"Best possible" is proven, not estimated. The library's par on big trays comes from a beam search and is sometimes
+beatable, so `npm run daily` (gen/daily/) proves the true minimum of each candidate board with an exact search and
+keeps only the boards it finishes (`gen/daily/prove.ts`: depth-first branch and bound with a transposition table;
+its lower bound counts, for each color, the runs of neighboring columns holding that color, which no single lift can
+span). Candidates are ranked by how badly greedy play does against the best line. Results are cached in
+`gen/daily/proofs.json`; the pool is `src/library/daily.json`. `npm run daily-check` plays a daily in a browser
+(first try, reload and resume, practice, back to the run, the next day). Playtest rows from dailies are tagged with
+role `daily` or `daily-practice`. `?daily=N` opens Daily #N as a test link that records nothing.
 
 ## Playtest upload (Nov 14, 2026)
 

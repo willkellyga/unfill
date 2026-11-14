@@ -51,7 +51,7 @@ function rng(seed: number): () => number {
 
 let clipSeq = 0;
 
-export function bottleSvg(k: Keepsake): string {
+export function bottleSvg(k: Pick<Keepsake, 'n' | 'layers' | 'lifts' | 'at' | 'spare'>, hex: readonly string[] = SAND_HEX): string {
   const id = `sb${++clipSeq}`;
   const x0 = CX - X(INNER);
   const x1 = CX + X(INNER);
@@ -78,7 +78,7 @@ export function bottleSvg(k: Keepsake): string {
         `M${f1(x0 - 2)},${f1(t.y + t.a)} ` +
         `C${f1(x0 + w * 0.3)},${f1(t.y + t.b)} ${f1(x0 + w * 0.65)},${f1(t.y - t.b + t.c)} ${f1(x1 + 2)},${f1(t.y + t.c)} ` +
         `L${f1(x1 + 2)},${f1(yFloor + 4)} L${f1(x0 - 2)},${f1(yFloor + 4)} Z`;
-      return `<path d="${d}" fill="${SAND_HEX[((color % 5) + 5) % 5]}"/>`;
+      return `<path d="${d}" fill="${hex[((color % 5) + 5) % 5]}"/>`;
     })
     .reverse()
     .join('');
