@@ -44,6 +44,12 @@ export class Bottle {
   private readonly layerMats = new Map<number, THREE.MeshStandardMaterial>();
   private readonly cork: THREE.Mesh;
   private corkT0 = Infinity;
+  /** Where the bottle stands on the rail; enter/exit animate around it. */
+  readonly home = new THREE.Vector3();
+  private enterT0 = -Infinity;
+  /** Current enter/exit displacement from home. */
+  readonly offset = new THREE.Vector2();
+  private exitT0 = Infinity;
   private bobT0 = Infinity;
   private filled = 0;
   private rand = 1;
@@ -239,6 +245,17 @@ export class Bottle {
     }
   }
 
+  /** A fresh empty bottle drops onto the rail at t0. */
+  enterAt(t0: number): void {
+    this.enterT0 = t0;
+    this.exitT0 = Infinity;
+  }
+
+  /** The corked bottle slides off along the rail at t0 (0.55 s), making room for the next one. */
+  exitAt(t0: number): void {
+    this.exitT0 = t0;
+  }
+
   /** Start the cork at time t0; it seats at t0 + 0.75 s. */
   corkAt(t0: number): void {
     this.corkT0 = t0;
@@ -272,6 +289,22 @@ export class Bottle {
   }
 
   update(now: number): void {
+    // enter: drops in from above with a soft landing; exit: slides away to the right and off the tray
+    let dx = 0;
+    let dy = 0;
+    const et = (now - this.enterT0) / 0.5;
+    if (et >= 0 && et < 1) {
+      const e = 1 - Math.pow(1 - et, 3);
+      dy = 1.8 * (1 - e) - 0.06 * Math.sin(et * Math.PI);
+    }
+    const xt = (now - this.exitT0) / 0.55;
+    if (xt >= 0) {
+      const e = Math.min(1, xt);
+      dx = 7 * e * e;
+      dy += 0.25 * Math.sin(e * Math.PI);
+    }
+    this.group.position.set(this.home.x + dx, this.home.y + dy, this.home.z);
+    this.offset.set(dx, dy);
     for (const L of this.layers) {
       if (L.grown >= 1) continue;
       const f = now <= L.t0 ? 0 : now >= L.t1 ? 1 : easeOut((now - L.t0) / (L.t1 - L.t0));

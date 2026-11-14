@@ -63,12 +63,15 @@ export class Blocks {
   private readonly p = new THREE.Vector3();
   private readonly s = new THREE.Vector3();
   private readonly c = new THREE.Color();
+  /** Hides sand above a height (the tray's top rail) while a new level pours in; far away the rest of the time. */
+  private readonly clip = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e6);
 
   constructor(
     private readonly t: Terrarium,
     geo: THREE.BufferGeometry,
   ) {
     const mat = withGlow(new THREE.MeshStandardMaterial({ map: sandTexture(true), roughness: 0.93, metalness: 0, envMapIntensity: 0.6 }));
+    mat.clippingPlanes = [this.clip];
     this.mesh = new THREE.InstancedMesh(geo, mat, MAX_BLOCKS);
     this.glow = new THREE.InstancedBufferAttribute(new Float32Array(MAX_BLOCKS), 1);
     this.glow.setUsage(THREE.DynamicDrawUsage);
@@ -85,6 +88,7 @@ export class Blocks {
     const bmat = withGlow(
       new THREE.MeshStandardMaterial({ map: sandTexture(false), color: 0xe6e2de, roughness: 0.93, metalness: 0, envMapIntensity: 0.6 }),
     );
+    bmat.clippingPlanes = [this.clip];
     this.bridges = new THREE.InstancedMesh(bgeo, bmat, MAX_BRIDGES);
     this.bridges.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.bridges.setColorAt(0, new THREE.Color());
@@ -95,6 +99,11 @@ export class Blocks {
     this.ghostMesh.setColorAt(0, new THREE.Color());
     this.ghostMesh.frustumCulled = false;
     this.ghostMesh.renderOrder = 10;
+  }
+
+  /** Clip blocks above height y (null: no clipping). The plane stays on the materials, so no shader recompile. */
+  setClipTop(y: number | null): void {
+    this.clip.constant = y ?? 1e6;
   }
 
   get ghostMaterial(): THREE.Material {

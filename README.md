@@ -9,6 +9,11 @@ rules core), milestone 2 (the board library: generator, solver, difficulty ratin
 `index.html` is now the game in Three.js: a glass sand frame on a sunny wooden table, with the keepsake bottle on its
 top rail. The 2D rules lab moved to `lab.html`.
 
+Continuous play (Will's feedback, Nov 13): the page uses the lab's layout (title, level and move count on top; help line,
+Undo/Restart and a fold-out settings panel at the bottom), and levels flow like Tetris with no card or click between
+them. On a clear the bottle corks and slides off, a new bottle drops in, and the next tray's sand pours in through the
+top of the glass while leftover moves count up. Tapping skips ahead. Undo and Restart only act on the current level.
+
 - **The lift.** The tapped group squishes, floats out of the glass, arcs over to the bottle, and melts into it as a
   ribbon of grains. The bottle gains a layer of that color, sized by the blocks lifted, so it is exactly full when
   the tray is empty. Layer tops wander a little, like hand-poured sand art.

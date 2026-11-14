@@ -46,6 +46,7 @@ export class Terrarium {
   private readonly glassMat: THREE.MeshStandardMaterial;
   private readonly glassEdgeMat: THREE.MeshStandardMaterial;
   private readonly shadowRect: THREE.Texture;
+  private bottleShadow: THREE.Mesh | null = null;
   private readonly shadowRound: THREE.Texture;
   private readonly glare: THREE.Texture;
   private readonly causticMat: THREE.ShaderMaterial;
@@ -59,6 +60,7 @@ export class Terrarium {
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'default' });
+    this.renderer.localClippingEnabled = true;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.NeutralToneMapping;
     this.renderer.toneMappingExposure = 1.0;
@@ -156,6 +158,11 @@ export class Terrarium {
     this.resizeRenderer();
   }
 
+  /** Inner floor to the underside of the top rail, where new sand pours in. */
+  get innerTop(): number {
+    return this.rows + HEADROOM;
+  }
+
   /** Inner floor to the top of the rail, where the bottle stands. */
   get railTop(): number {
     return this.rows + HEADROOM + RAIL_H;
@@ -245,6 +252,7 @@ export class Terrarium {
     const spot = this.bottleSpot;
     bottleShadow.position.set(spot.x + 0.3, spot.y + 0.005, 0.15);
     t.add(bottleShadow);
+    this.bottleShadow = bottleShadow;
 
     // sunlight through the glass makes a soft caustic on the table in front of the tray
     this.causticMesh = new THREE.Mesh(new THREE.PlaneGeometry(w + 2, 3.2), this.causticMat);
@@ -283,6 +291,14 @@ export class Terrarium {
   }
 
   /** The cell under a screen point, or null. Rays hit the front face of the blocks. */
+  /** The bottle's contact shadow follows it as it drops in or slides away (dx, dy from its spot on the rail). */
+  moveBottleShadow(dx: number, dy: number): void {
+    const m = this.bottleShadow;
+    if (!m) return;
+    m.position.x = this.bottleSpot.x + 0.3 + dx;
+    (m.material as THREE.MeshBasicMaterial).opacity = 0.45 * Math.max(0, 1 - dy / 1.2) * Math.max(0, 1 - dx / 3);
+  }
+
   pick(clientX: number, clientY: number): number | null {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
