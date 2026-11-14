@@ -159,18 +159,6 @@ button.primary {
   border-color: var(--accent);
   color: var(--paper);
 }
-.foot.nudge #undo,
-.foot.nudge #restart {
-  animation: nudge 0.5s ease;
-}
-@keyframes nudge {
-  25% {
-    transform: translateY(-5px);
-  }
-  60% {
-    transform: translateY(1px);
-  }
-}
 .more {
   width: min(460px, 100%);
   position: relative;
@@ -497,9 +485,317 @@ body .controls {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .morePanel,
-  .foot.nudge #undo,
-  .foot.nudge #restart {
+  .morePanel {
     animation: none;
   }
+}
+
+/* ================================================================ milestone 5: the full loop */
+
+/* the moves chip glows softly while there's a known way to finish with the moves left */
+body .count {
+  transition: box-shadow 0.6s ease, border-color 0.6s ease;
+}
+body .count.ontrack {
+  border-color: #b9d9a9;
+  box-shadow: 0 6px 16px -10px rgba(90, 63, 51, 0.6), 0 0 0 3px rgba(140, 196, 134, 0.28), 0 0 18px rgba(140, 196, 134, 0.35);
+}
+
+/* level and clear banners float over the tray, never ask for a tap, and fade on their own */
+.banner {
+  position: fixed;
+  left: 50%;
+  top: var(--banner-y, 45%);
+  transform: translate(-50%, -50%) scale(0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 190px;
+  max-width: calc(100% - 48px);
+  padding: 12px 22px 13px;
+  border-radius: 24px;
+  background: rgba(255, 248, 240, 0.9);
+  border: 1px solid var(--line);
+  box-shadow: 0 18px 40px -20px rgba(90, 63, 51, 0.65);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+.banner.show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+.banner b {
+  font: 600 1.6rem/1.1 var(--display);
+}
+.banner span {
+  font: 700 0.86rem/1.35 var(--body);
+  color: var(--muted);
+}
+.banner .stars {
+  display: flex;
+  gap: 4px;
+  font-size: 2rem;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+.banner .stars i {
+  font-style: normal;
+  color: #e7d6c3;
+}
+.banner .stars i.on {
+  color: #f0b53f;
+  text-shadow: 0 2px 0 #d39324;
+}
+.banner.show .stars i {
+  animation: starPop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+@keyframes starPop {
+  from {
+    transform: scale(0.2) rotate(-30deg);
+    opacity: 0;
+  }
+}
+
+/* shelf button: a count badge, and a bump as each new bottle arrives */
+#shelfBtn {
+  position: relative;
+}
+#shelfBtn .badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--paper);
+  font: 800 0.7rem/20px var(--body);
+  text-align: center;
+}
+#shelfBtn.bump {
+  animation: bump 0.55s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+@keyframes bump {
+  35% {
+    transform: scale(1.18);
+  }
+}
+
+/* ---- the shelf ---- */
+.shelf {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(#f8e8d6, #f3dcc4);
+  padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
+  animation: rise 0.25s ease both;
+  z-index: 5;
+}
+.shelfHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px));
+}
+.shelfHead h2 {
+  font: 600 1.6rem/1.1 var(--display);
+  margin: 0;
+}
+.shelfHead small {
+  font: 700 0.84rem var(--body);
+  color: var(--muted);
+}
+#shelfClose {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.shelfDetail {
+  margin: 8px 16px 4px;
+  min-height: 2.6em;
+  font: 700 0.86rem/1.3 var(--body);
+  color: var(--ink);
+}
+.shelfScroll {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 10px calc(env(safe-area-inset-bottom, 0px) + 20px);
+}
+.shelfGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  row-gap: 14px;
+  max-width: 620px;
+  margin: 0 auto;
+}
+.keep {
+  all: unset;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  padding-top: 6px;
+  content-visibility: auto;
+  contain-intrinsic-size: 76px 128px;
+}
+.keep svg {
+  display: block;
+  stroke: none;
+  fill: none;
+  width: 54px;
+  height: 94px;
+  transition: transform 0.2s ease;
+}
+.keep:active svg,
+.keep.sel svg {
+  transform: translateY(-4px);
+}
+.keep:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+/* each bottle's bit of plank; side by side they make one shelf board per row */
+.keep::after {
+  content: '';
+  order: 1;
+  align-self: stretch;
+  height: 9px;
+  margin-top: -2px;
+  background: linear-gradient(#d9a877, #b98352 70%, #a26f43);
+  box-shadow: 0 6px 8px -6px rgba(90, 63, 51, 0.6);
+}
+.keep .cap {
+  order: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 4px;
+  font: 800 0.78rem/1.1 var(--body);
+  color: var(--ink);
+}
+.keep .cap i {
+  font-style: normal;
+  color: #e3a93a;
+  font-size: 0.7rem;
+  letter-spacing: 1px;
+}
+.keep .cap s {
+  text-decoration: none;
+  color: #e3cdb5;
+}
+.keep .glassBack {
+  fill: rgba(255, 255, 255, 0.35);
+}
+.keep .glass {
+  fill: none;
+  stroke: rgba(150, 120, 98, 0.55);
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+}
+.keep .shine {
+  stroke: rgba(255, 255, 255, 0.8);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+.keep .shadow {
+  fill: rgba(90, 63, 51, 0.18);
+}
+.keep .cork {
+  fill: #c99a6b;
+  stroke: #a77c52;
+  stroke-width: 0.8;
+}
+.keep .corkTop {
+  fill: #d8ae80;
+}
+.keep .ribbon rect,
+.keep .ribbon path {
+  fill: var(--accent);
+}
+.keep .ribbon .tail {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .banner,
+  .banner.show .stars i,
+  #shelfBtn.bump,
+  .shelf {
+    animation: none;
+    transition: opacity 0.2s ease;
+  }
+}
+
+/* ================================================================ points (Nov 14): moves made next to par, score and best */
+body #levelLabel .meta {
+  font-variant-numeric: tabular-nums;
+}
+body #levelLabel .used {
+  color: var(--ink);
+  font-weight: 800;
+}
+body #levelLabel.over .used {
+  color: var(--accent);
+}
+body .count small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+.count strong.pour {
+  color: #c8962e;
+}
+/* moves left sits between the shelf and settings buttons */
+.movesPill {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  align-self: center;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 16px;
+  box-shadow: 0 8px 18px -12px rgba(90, 63, 51, 0.7);
+  font-variant-numeric: tabular-nums;
+}
+.movesPill strong {
+  font: 600 1.4rem/1 var(--display);
+  transition: color 0.3s ease;
+}
+.movesPill strong.pour {
+  color: #c8962e;
+}
+.movesPill small {
+  font: 700 0.82rem var(--body);
+  color: var(--muted);
+}
+.movesPill.low strong {
+  color: var(--accent);
+}
+#overBest.best {
+  color: #c8962e;
+  font-size: 1.05rem;
+}
+#over .introInner button + button {
+  margin-top: 8px;
+}
+#over {
+  z-index: 4;
 }
