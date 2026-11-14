@@ -36,7 +36,7 @@ import { isLandscape, isPhone, lockPortrait, preventZoom, resetZoom } from './or
 import { SLOW_FRAME_MS, TIERS, type Tier, type TierName } from './quality';
 import { BLOCK, BOTTLE_SCALE, Terrarium } from './scene';
 import { renderShelf } from './shelf';
-import { goalHtml, goalLabel, parseReadout } from './hud';
+import { goalHtml, goalLabel } from './hud';
 
 // ---------------------------------------------------------------- setup
 
@@ -1141,18 +1141,14 @@ canvas.addEventListener('pointerleave', () => {
 
 const fmt = (v: number) => v.toLocaleString('en-US');
 
-/** How the par line under the moves count reads (hud.ts); `?readout=` previews the other mocks. */
-const readout = parseReadout(params.get('readout'));
-document.documentElement.dataset.readout = readout;
-
 function updateHud(): void {
   if (!$('moves').classList.contains('pour')) $('moves').textContent = String(S.pool.moves);
   $('movesLabel').textContent = S.pool.moves === 1 ? 'move left' : 'moves left';
   $('levelWord').textContent = lesson ? 'lesson' : 'level';
   $('levelNum').textContent = String(S.n);
   // the moves made on this tray against its par, each as the color it lifted
-  const goal = { lifted: S.taps.map((cell, k) => S.history[k].board.cells[cell]), par: S.par, cleared: S.cleared };
-  $('goal').innerHTML = goalHtml(readout, goal);
+  const goal = { lifted: S.taps.map((cell, k) => S.history[k].board.cells[cell]), par: S.par };
+  $('goal').innerHTML = goalHtml(goal);
   $('goal').setAttribute('aria-label', goalLabel(goal));
   $('movesPill').dataset.lifts = String(S.lifts);
   $('movesPill').classList.toggle('overPar', S.lifts > S.par);

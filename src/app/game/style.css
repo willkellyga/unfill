@@ -1054,20 +1054,10 @@ body .hud {
   color: var(--muted);
   white-space: nowrap;
 }
-.goal b {
-  color: var(--ink);
-  font-weight: 800;
-}
 .goal em {
   font-style: normal;
   color: var(--accent);
   font-weight: 800;
-}
-.goal .overN {
-  color: var(--accent);
-}
-.goal .dot {
-  opacity: 0.6;
 }
 
 /* track: one slot per par lift, filling with the color lifted; lifts past par hang off the end in red */

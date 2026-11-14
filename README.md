@@ -63,8 +63,7 @@ Details, research and the playtest plan: [gen/tuning/README.md](gen/tuning/READM
   before a rotation settles. Pinch and double-tap zoom are off (viewport tag, `touch-action`, and Safari's gesture
   events). `npm run orientation-check` turns an emulated iPhone sideways and back, with and without resize events.
 - **Header and lesson** (Nov 14): the header is three slots (left, center, right); the moves card sits at the top
-  center over the bottle, with this level's par as a row of slots that fill with each lifted color (`hud.ts`;
-  `?readout=countdown` or `labels` previews the other mocks). A new player's first Begin plays a two-tray lesson
+  center over the bottle, with this level's par as a row of slots that fill with each lifted color (`hud.ts`). A new player's first Begin plays a two-tray lesson
   (`src/core/tutorial.ts`): a guided tray (tap, sand falls, colors join), then a free tray against par that can't be
   lost. It isn't scored, shelved, saved or sent to the playtest sheet. Settings > How to play replays it mid-run;
   `?lesson` forces it. `npm run lesson-check` plays it in a headless iPhone.
