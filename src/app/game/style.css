@@ -560,6 +560,233 @@ body[data-ui='cozy'] .toast {
   top: calc(env(safe-area-inset-top, 0px) + 74px);
 }
 
+
+/* ================================================================ look-and-feel themes (mockups)
+   Built on the Bottle top layout. Each changes the page's colors, type, chips and buttons; themes.ts changes the
+   scene, the blocks and how they move. */
+
+/* ---- Jelly: candy chips with a thick border and a pressed-down shadow, glossy round buttons ---- */
+body[data-theme='jelly'] {
+  --room: #ffdcea;
+  --ink: #8a2c55;
+  --muted: #c45f8d;
+  --paper: #ffffff;
+  --line: #ffb6d3;
+  --accent: #ff5d96;
+  --display: 'Fredoka', system-ui, sans-serif;
+}
+body[data-theme='jelly'] #levelLabel,
+body[data-theme='jelly'] .count {
+  border: 3px solid #ffb6d3 !important;
+  box-shadow: 0 5px 0 #ff98c0 !important;
+}
+body[data-theme='jelly'] .count strong {
+  color: var(--accent);
+  font-weight: 700;
+}
+body[data-theme='jelly'] .controls button {
+  background: radial-gradient(circle at 35% 28%, #ffd0e2 0 14%, #ff7fae 42%, #ff4d8c 100%) !important;
+  border: 0 !important;
+  color: #fff !important;
+  box-shadow: 0 6px 0 #d63f78, 0 12px 18px -10px rgba(214, 63, 120, 0.8) !important;
+}
+body[data-theme='jelly'] .controls button:disabled {
+  filter: saturate(0.35) brightness(1.08);
+  opacity: 0.7;
+}
+body[data-theme='jelly'] .controls button svg {
+  stroke-width: 2.8;
+}
+body[data-theme='jelly'] .toast {
+  background: #ff5d96;
+  box-shadow: 0 4px 0 #d63f78;
+}
+
+/* ---- Gems: navy panels with gold rims, gold numbers ---- */
+body[data-theme='gems'] {
+  --room: #232e66;
+  --ink: #ffffff;
+  --muted: #a9b5f5;
+  --paper: #1d2760;
+  --line: #e0ad4a;
+  --accent: #ffcc4d;
+  --display: 'Baloo 2', system-ui, sans-serif;
+  --body: 'Baloo 2', 'Nunito', system-ui, sans-serif;
+  color-scheme: dark;
+}
+body[data-theme='gems'] #levelLabel,
+body[data-theme='gems'] .count {
+  background: linear-gradient(#2c3a86, #18205a) !important;
+  border: 2px solid #e0ad4a !important;
+  border-radius: 12px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 6px 14px -6px rgba(0, 0, 0, 0.7) !important;
+}
+body[data-theme='gems'] .title b {
+  font-weight: 800;
+}
+body[data-theme='gems'] .count strong {
+  color: #ffd257;
+  font-weight: 800;
+  text-shadow: 0 2px 0 #8a5a0c;
+}
+body[data-theme='gems'] .controls button {
+  background: linear-gradient(#2f3d8c, #1a225e) !important;
+  border: 2px solid #e0ad4a !important;
+  color: #ffd257 !important;
+  border-radius: 14px !important;
+}
+body[data-theme='gems'] .controls button:disabled {
+  opacity: 0.45;
+}
+body[data-theme='gems'] .toast {
+  background: #18205a;
+  border: 2px solid #e0ad4a;
+  color: #ffd257;
+}
+body[data-theme='gems'] .morePanel,
+body[data-theme='gems'] .how,
+body[data-theme='gems'] .introInner {
+  background: #1d2760;
+  border-color: #e0ad4a;
+}
+body[data-theme='gems'] button {
+  color: var(--ink);
+  background: #2a3578;
+  border-color: #4a5aa8;
+}
+body[data-theme='gems'] .segs button[aria-pressed='true'] {
+  background: #e0ad4a;
+  color: #18205a;
+  border-color: #e0ad4a;
+}
+body[data-theme='gems'] .intro {
+  background: rgba(20, 27, 64, 0.6);
+}
+
+/* ---- Moonlit: frosted glass chips, a serif face, soft glow ---- */
+body[data-theme='moonlit'] {
+  --room: #2a2552;
+  --ink: #f1ecff;
+  --muted: #b9b0e4;
+  --paper: #2f2a5c;
+  --line: rgba(255, 255, 255, 0.2);
+  --accent: #ffd98a;
+  --display: 'Fraunces', Georgia, serif;
+  color-scheme: dark;
+}
+body[data-theme='moonlit'] #levelLabel,
+body[data-theme='moonlit'] .count,
+body[data-theme='moonlit'] .controls button {
+  background: rgba(255, 255, 255, 0.09) !important;
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 0 24px -8px rgba(180, 160, 255, 0.55) !important;
+  color: var(--ink) !important;
+}
+body[data-theme='moonlit'] .title b,
+body[data-theme='moonlit'] .count strong {
+  font-weight: 500;
+  text-shadow: 0 0 14px rgba(255, 217, 138, 0.55);
+}
+body[data-theme='moonlit'] .count strong {
+  color: var(--accent);
+}
+body[data-theme='moonlit'] .controls button svg {
+  stroke-width: 1.6;
+}
+body[data-theme='moonlit'] .controls button:disabled {
+  opacity: 0.4;
+}
+body[data-theme='moonlit'] .toast {
+  background: rgba(255, 255, 255, 0.14);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  font-family: var(--display);
+  font-weight: 500;
+}
+body[data-theme='moonlit'] .morePanel,
+body[data-theme='moonlit'] .how,
+body[data-theme='moonlit'] .introInner {
+  background: #2f2a5c;
+}
+body[data-theme='moonlit'] button {
+  color: var(--ink);
+  background: #3a3470;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+body[data-theme='moonlit'] .segs button[aria-pressed='true'] {
+  background: var(--accent);
+  color: #2a2552;
+}
+body[data-theme='moonlit'] .intro {
+  background: rgba(27, 24, 56, 0.55);
+}
+
+/* ---- Toys: stamped cardboard chips, chunky painted buttons with a hard shadow ---- */
+body[data-theme='toys'] {
+  --room: #efe7d8;
+  --ink: #3b2a1e;
+  --muted: #7d5f45;
+  --paper: #fffaf0;
+  --line: #3b2a1e;
+  --accent: #e0533a;
+  --display: 'Lilita One', 'Fredoka', system-ui, sans-serif;
+}
+body[data-theme='toys'] #levelLabel,
+body[data-theme='toys'] .count {
+  border: 3px solid #3b2a1e !important;
+  border-radius: 10px !important;
+  box-shadow: 4px 4px 0 #3b2a1e !important;
+}
+body[data-theme='toys'] #levelLabel {
+  transform: rotate(-2deg);
+}
+body[data-theme='toys'] .count {
+  transform: rotate(2deg);
+}
+body[data-theme='toys'] .title b,
+body[data-theme='toys'] .count strong {
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+body[data-theme='toys'] .controls button {
+  border: 3px solid #3b2a1e !important;
+  border-radius: 14px !important;
+  box-shadow: 4px 4px 0 #3b2a1e !important;
+  color: #fff !important;
+}
+body[data-theme='toys'] .controls button svg {
+  stroke-width: 3;
+}
+body[data-theme='toys'] #undo {
+  background: #f0ae2e !important;
+}
+body[data-theme='toys'] #restart {
+  background: #3a6db8 !important;
+}
+body[data-theme='toys'] #gear {
+  background: #e0533a !important;
+}
+body[data-theme='toys'] .controls button:active {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 #3b2a1e !important;
+}
+body[data-theme='toys'] .controls button:disabled {
+  filter: grayscale(0.7);
+  opacity: 0.6;
+}
+body[data-theme='toys'] .toast {
+  background: #fffaf0;
+  color: #3b2a1e;
+  border: 3px solid #3b2a1e;
+  border-radius: 10px;
+  box-shadow: 3px 3px 0 #3b2a1e;
+  font-family: var(--display);
+  font-weight: 400;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .morePanel,
   .foot.nudge #undo,

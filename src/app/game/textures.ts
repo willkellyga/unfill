@@ -188,12 +188,12 @@ export function causticTexture(): THREE.CanvasTexture {
 }
 
 /** The warm room behind the table: late-afternoon light, brighter toward the top left. */
-export function backdropTexture(): THREE.CanvasTexture {
+export function backdropTexture(stops: readonly [string, string, string] = ['#fbeee0', '#f6e2cd', '#efd3b8']): THREE.CanvasTexture {
   const [c, g] = canvas(64, 256);
   const grd = g.createLinearGradient(0, 0, 0, 256);
-  grd.addColorStop(0, '#fbeee0');
-  grd.addColorStop(0.55, '#f6e2cd');
-  grd.addColorStop(1, '#efd3b8');
+  grd.addColorStop(0, stops[0]);
+  grd.addColorStop(0.55, stops[1]);
+  grd.addColorStop(1, stops[2]);
   g.fillStyle = grd;
   g.fillRect(0, 0, 64, 256);
   return tex(c);
@@ -230,6 +230,32 @@ export function corkTexture(): THREE.CanvasTexture {
     g.fillStyle = R() < 0.6 ? `rgba(110,70,35,${0.2 + R() * 0.4})` : `rgba(240,210,170,${0.3 + R() * 0.4})`;
     const s = 1 + R() * 2.5;
     g.fillRect(R() * S, R() * S, s, s);
+  }
+  const t = tex(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+/** Painted wood for toy blocks: near-white with a faint grain, multiplied by each block's paint color. */
+export function paintedWoodTexture(): THREE.CanvasTexture {
+  const S = 128;
+  const [c, g] = canvas(S, S);
+  const R = rng(21);
+  g.fillStyle = '#f4f4f4';
+  g.fillRect(0, 0, S, S);
+  for (let i = 0; i < 22; i++) {
+    const y = R() * S;
+    const amp = 1 + R() * 2.5;
+    const ph = R() * 10;
+    g.strokeStyle = `rgba(90,70,50,${0.05 + R() * 0.08})`;
+    g.lineWidth = 0.6 + R() * 1.2;
+    g.beginPath();
+    for (let x = 0; x <= S; x += 4) {
+      const yy = y + Math.sin(x * 0.05 + ph) * amp;
+      if (x === 0) g.moveTo(x, yy);
+      else g.lineTo(x, yy);
+    }
+    g.stroke();
   }
   const t = tex(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
