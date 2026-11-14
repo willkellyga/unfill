@@ -235,3 +235,49 @@ export function corkTexture(): THREE.CanvasTexture {
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
 }
+
+/**
+ * Packed sand that tiles without a seam, for merged sand (merged.ts): the texture runs straight across every block
+ * of a group, so each mottle and grain is drawn wrapped around the tile's edges, and there's no baked edge band
+ * (the merged shader shades the outline itself).
+ */
+export function sandTileTexture(): THREE.CanvasTexture {
+  const S = 128;
+  const [c, g] = canvas(S, S);
+  const R = rng(12);
+  g.fillStyle = '#f2f2f2';
+  g.fillRect(0, 0, S, S);
+  const wrapped = (x: number, y: number, r: number, draw: (x: number, y: number) => void) => {
+    for (const dx of [-S, 0, S])
+      for (const dy of [-S, 0, S]) {
+        const px = x + dx;
+        const py = y + dy;
+        if (px + r < 0 || py + r < 0 || px - r > S || py - r > S) continue;
+        draw(px, py);
+      }
+  };
+  for (let i = 0; i < 90; i++) {
+    const x = R() * S;
+    const y = R() * S;
+    const r = 4 + R() * 12;
+    const v = R() < 0.5 ? '255,255,255' : '200,190,180';
+    wrapped(x, y, r, (px, py) => {
+      const grd = g.createRadialGradient(px, py, 0, px, py, r);
+      grd.addColorStop(0, `rgba(${v},0.18)`);
+      grd.addColorStop(1, `rgba(${v},0)`);
+      g.fillStyle = grd;
+      g.fillRect(px - r, py - r, r * 2, r * 2);
+    });
+  }
+  for (let i = 0; i < 1500; i++) {
+    const x = Math.floor(R() * S);
+    const y = Math.floor(R() * S);
+    const light = R() < 0.55;
+    g.fillStyle = light ? `rgba(255,255,255,${0.35 + R() * 0.5})` : `rgba(110,80,60,${0.12 + R() * 0.22})`;
+    const s = R() < 0.85 ? 1 : 2;
+    wrapped(x, y, s, (px, py) => g.fillRect(px, py, s, s));
+  }
+  const t = tex(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}

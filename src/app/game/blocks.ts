@@ -3,23 +3,25 @@ import { EMPTY } from '../../core';
 import { BLOCK, BLOCK_DEPTH, type Terrarium } from './scene';
 import { sandColor } from './palette';
 import { patternFor, type PatternMode } from './prefs';
-import { sandTexture } from './textures';
+import { sandTileTexture } from './textures';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { LOOK, mergedDepthMaterial, mergedGeometry, neighborMask, patchMerged } from './merged';
 
 /**
- * Sand blocks as instanced meshes: one draw call for every block on screen, one for the "bridges" that fill the
- * seams between touching blocks of one color (so a group reads as one piece of packed sand), and one for the
- * translucent ghost shown while holding to preview.
+ * Sand blocks as instanced meshes: one draw call for every block on screen, and one for the translucent ghost
+ * shown while holding to preview.
  *
- * Each frame the caller describes what to draw with `begin`, `block`, `bridgesFor` and `ghost`, then `end`.
+ * Touching blocks of one color are drawn as one continuous rounded piece, with a soft score line where the blocks
+ * meet: the vertex shader wraps each block around its group's shape (merged.ts).
+ *
+ * Each frame the caller describes what to draw with `begin`, `block`, `joinSettled` and `ghost`, then `end`.
  */
 const MAX_BLOCKS = 300;
-const MAX_BRIDGES = 400;
 
 /**
  * Color-blind patterns (prefs.ts): a fine surface pattern pressed into the sand, picked per instance by `aPat`
  * (0 plain, 1 dots, 2 waves, 3 crosshatch, 4 stripes). Drawn in world units around each instance's center, with
- * periods that divide the half-cell spacing of blocks and the bridges between them, so a group's pattern runs
- * unbroken across its seams and moves with the sand as it falls.
+ * periods that divide the half-cell spacing of blocks, so a piece's pattern runs unbroken across its joins and moves with the sand as it falls.
  */
 const PATTERN_GLSL = /* glsl */ `
 float patLine(float v, float w) {
@@ -89,21 +91,26 @@ export interface BlockDraw {
   rotY?: number;
   color: number;
   glow?: number;
+  /** The neighbors this block joins, when the caller knows (a piece in flight; see merged.ts). */
+  join?: number;
 }
 
 export class Blocks {
   readonly mesh: THREE.InstancedMesh;
-  readonly bridges: THREE.InstancedMesh;
   readonly ghostMesh: THREE.InstancedMesh;
   private readonly glow: THREE.InstancedBufferAttribute;
-  private readonly bridgeGlow: THREE.InstancedBufferAttribute;
   private readonly pat: THREE.InstancedBufferAttribute;
-  private readonly bridgePat: THREE.InstancedBufferAttribute;
+  private readonly mask: THREE.InstancedBufferAttribute;
   /** Which sands carry their color-blind pattern. */
   patterns: PatternMode = 'fifth';
   private readonly ghostMat: THREE.MeshBasicMaterial;
+  /** Per drawn block: where it is, and whether it sits square in a cell (so it can join its neighbors). */
+  private readonly bx = new Float32Array(MAX_BLOCKS);
+  private readonly by = new Float32Array(MAX_BLOCKS);
+  private readonly bColor = new Int16Array(MAX_BLOCKS);
+  private readonly bSquare = new Uint8Array(MAX_BLOCKS);
+  private segments: number;
   private n = 0;
-  private nb = 0;
   private ng = 0;
   private readonly m = new THREE.Matrix4();
   private readonly q = new THREE.Quaternion();
@@ -116,40 +123,32 @@ export class Blocks {
 
   constructor(
     private readonly t: Terrarium,
-    geo: THREE.BufferGeometry,
+    segments: number,
   ) {
-    const mat = withGlow(new THREE.MeshStandardMaterial({ map: sandTexture(true), roughness: 0.93, metalness: 0, envMapIntensity: 0.6 }));
-    mat.clippingPlanes = [this.clip];
-    this.mesh = new THREE.InstancedMesh(geo, mat, MAX_BLOCKS);
+    this.segments = segments;
     this.glow = new THREE.InstancedBufferAttribute(new Float32Array(MAX_BLOCKS), 1);
     this.glow.setUsage(THREE.DynamicDrawUsage);
-    geo.setAttribute('aGlow', this.glow);
     this.pat = new THREE.InstancedBufferAttribute(new Float32Array(MAX_BLOCKS), 1);
     this.pat.setUsage(THREE.DynamicDrawUsage);
-    geo.setAttribute('aPat', this.pat);
+    this.mask = new THREE.InstancedBufferAttribute(new Float32Array(MAX_BLOCKS), 1);
+    this.mask.setUsage(THREE.DynamicDrawUsage);
+
+    const mat = withGlow(new THREE.MeshStandardMaterial({ map: sandTileTexture(), roughness: 0.93, metalness: 0, envMapIntensity: 0.6 }));
+    const glowPatch = mat.onBeforeCompile;
+    mat.onBeforeCompile = (shader, renderer) => {
+      glowPatch.call(mat, shader, renderer);
+      patchMerged(shader, LOOK);
+    };
+    mat.customProgramCacheKey = () => 'merged-sand';
+    mat.clippingPlanes = [this.clip];
+    this.mesh = new THREE.InstancedMesh(this.makeGeometry(), mat, MAX_BLOCKS);
+    this.mesh.customDepthMaterial = mergedDepthMaterial(LOOK);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.setColorAt(0, new THREE.Color());
     this.mesh.frustumCulled = false;
 
-    const bgeo = new THREE.BoxGeometry(1, 1, 1);
-    this.bridgeGlow = new THREE.InstancedBufferAttribute(new Float32Array(MAX_BRIDGES), 1);
-    this.bridgeGlow.setUsage(THREE.DynamicDrawUsage);
-    bgeo.setAttribute('aGlow', this.bridgeGlow);
-    this.bridgePat = new THREE.InstancedBufferAttribute(new Float32Array(MAX_BRIDGES), 1);
-    this.bridgePat.setUsage(THREE.DynamicDrawUsage);
-    bgeo.setAttribute('aPat', this.bridgePat);
-    // a touch darker than the blocks' faces, to sit in with their softly shaded edges
-    const bmat = withGlow(
-      new THREE.MeshStandardMaterial({ map: sandTexture(false), color: 0xe6e2de, roughness: 0.93, metalness: 0, envMapIntensity: 0.6 }),
-    );
-    bmat.clippingPlanes = [this.clip];
-    this.bridges = new THREE.InstancedMesh(bgeo, bmat, MAX_BRIDGES);
-    this.bridges.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.bridges.setColorAt(0, new THREE.Color());
-    this.bridges.frustumCulled = false;
-
     this.ghostMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false });
-    this.ghostMesh = new THREE.InstancedMesh(geo, this.ghostMat, 120);
+    this.ghostMesh = new THREE.InstancedMesh(this.ghostGeometry(), this.ghostMat, 120);
     this.ghostMesh.setColorAt(0, new THREE.Color());
     this.ghostMesh.frustumCulled = false;
     this.ghostMesh.renderOrder = 10;
@@ -165,25 +164,37 @@ export class Blocks {
   }
 
   setShadows(on: boolean): void {
-    for (const m of [this.mesh, this.bridges]) {
-      m.castShadow = on;
-      m.receiveShadow = on;
-    }
+    this.mesh.castShadow = on;
+    this.mesh.receiveShadow = on;
   }
 
-  /** Swap the block geometry (quality tier changed). */
-  setGeometry(geo: THREE.BufferGeometry): void {
-    const old = this.mesh.geometry;
+  private ghostGeometry(): THREE.BufferGeometry {
+    return new RoundedBoxGeometry(BLOCK, BLOCK, BLOCK_DEPTH, this.segments, LOOK.radius);
+  }
+
+  private makeGeometry(): THREE.BufferGeometry {
+    const geo = mergedGeometry(LOOK.radius, this.segments);
     geo.setAttribute('aGlow', this.glow);
     geo.setAttribute('aPat', this.pat);
-    this.mesh.geometry = geo;
-    this.ghostMesh.geometry = geo;
-    old.dispose();
+    geo.setAttribute('aMask', this.mask);
+    return geo;
+  }
+
+  /** Rounded-edge detail for the quality tier. */
+  setSegments(segments: number): void {
+    this.segments = segments;
+    for (const [mesh, geo] of [
+      [this.mesh, this.makeGeometry()],
+      [this.ghostMesh, this.ghostGeometry()],
+    ] as const) {
+      const old = mesh.geometry;
+      mesh.geometry = geo;
+      old.dispose();
+    }
   }
 
   begin(): void {
     this.n = 0;
-    this.nb = 0;
     this.ng = 0;
   }
 
@@ -203,44 +214,42 @@ export class Blocks {
     this.mesh.setColorAt(i, sandColor(d.color));
     this.glow.setX(i, d.glow ?? 0);
     this.pat.setX(i, patternFor(d.color, this.patterns));
+    this.mask.setX(i, d.join ?? 0);
+    this.bx[i] = d.x;
+    this.by[i] = d.y0;
+    this.bColor[i] = d.color;
+    this.bSquare[i] =
+      d.join === undefined &&
+      d.h === 1 &&
+      !d.rotY &&
+      !d.z &&
+      Math.abs(sx - 1) < 0.01 &&
+      Math.abs(sy - 1) < 0.01 &&
+      Math.abs(sz - 1) < 0.01
+        ? 1
+        : 0;
   }
 
   /**
-   * Bridges between edge-touching same-color blocks on a settled grid. `colorAt` gives the color in each cell, or
-   * EMPTY; `glowAt` an optional highlight per cell.
+   * Join the blocks drawn so far that sit square in a settled cell to their same-color neighbors. `colorAt` gives
+   * the settled color in each cell of the grid, or EMPTY.
    */
-  bridgesFor(cols: number, rows: number, colorAt: (i: number) => number, glowAt?: (i: number) => number): void {
+  joinSettled(cols: number, rows: number, colorAt: (i: number) => number): void {
     const T = this.t;
-    const inset = 0.13; // matches the block's corner radius
-    const span = 1 - BLOCK + 2 * inset + 0.02;
-    const long = BLOCK - 0.16; // fills most of the rounded dip between the two blocks
-    for (let r = 0; r < rows; r++)
-      for (let c = 0; c < cols; c++) {
-        const i = r * cols + c;
-        const v = colorAt(i);
-        if (v === EMPTY) continue;
-        const x = T.cellX(c);
-        const y = T.cellY(r);
-        const g = glowAt ? glowAt(i) : 0;
-        if (c + 1 < cols && colorAt(i + 1) === v) this.bridge(x + 0.5, y, span, long, BLOCK_DEPTH - 0.004, v, g);
-        if (r + 1 < rows && colorAt(i + cols) === v) this.bridge(x, y - 0.5, long, span, BLOCK_DEPTH - 0.004, v, g);
-        if (c + 1 < cols && r + 1 < rows && colorAt(i + 1) === v && colorAt(i + cols) === v && colorAt(i + cols + 1) === v) {
-          this.bridge(x + 0.5, y - 0.5, span, span, BLOCK_DEPTH - 0.004, v, g);
-        }
-      }
-  }
-
-  private bridge(x: number, y: number, w: number, h: number, d: number, color: number, glow: number): void {
-    if (this.nb >= MAX_BRIDGES) return;
-    const i = this.nb++;
-    this.p.set(x, y, 0);
-    this.q.identity();
-    this.s.set(w, h, d);
-    this.m.compose(this.p, this.q, this.s);
-    this.bridges.setMatrixAt(i, this.m);
-    this.bridges.setColorAt(i, sandColor(color));
-    this.bridgeGlow.setX(i, glow);
-    this.bridgePat.setX(i, patternFor(color, this.patterns));
+    const x0 = T.cellX(0);
+    const top = T.cellY(0);
+    for (let k = 0; k < this.n; k++) {
+      if (!this.bSquare[k]) continue;
+      const c = Math.round(this.bx[k] - x0);
+      const yc = this.by[k] + BLOCK / 2;
+      const r = Math.round(top - yc);
+      if (c < 0 || c >= cols || r < 0 || r >= rows) continue;
+      if (Math.abs(T.cellX(c) - this.bx[k]) > 1e-3 || Math.abs(T.cellY(r) - yc) > 1e-3) continue;
+      const i = r * cols + c;
+      const v = colorAt(i);
+      if (v === EMPTY || v !== this.bColor[k]) continue;
+      this.mask.setX(k, neighborMask(i, cols, rows, (j) => colorAt(j) === v));
+    }
   }
 
   ghost(x: number, y: number, z: number, scale: number, color: number): void {
@@ -258,7 +267,6 @@ export class Blocks {
   end(ghostOpacity = 0.5): void {
     for (const [mesh, count] of [
       [this.mesh, this.n],
-      [this.bridges, this.nb],
       [this.ghostMesh, this.ng],
     ] as const) {
       mesh.count = count;
@@ -271,14 +279,9 @@ export class Blocks {
         mesh.instanceColor.needsUpdate = true;
       }
     }
-    for (const [a, count] of [
-      [this.glow, this.n],
-      [this.bridgeGlow, this.nb],
-      [this.pat, this.n],
-      [this.bridgePat, this.nb],
-    ] as const) {
+    for (const a of [this.glow, this.pat, this.mask]) {
       a.clearUpdateRanges();
-      a.addUpdateRange(0, Math.max(1, count));
+      a.addUpdateRange(0, Math.max(1, this.n));
       a.needsUpdate = true;
     }
     this.ghostMat.opacity = ghostOpacity;

@@ -15,6 +15,7 @@ import libraryText from '../../library/boards.json?raw';
 import curvesText from '../../library/par-curves.json?raw';
 import { Audio } from './audio';
 import { Blocks } from './blocks';
+import { groupMasks } from './merged';
 import { Bottle } from './bottle';
 import { Grains } from './grains';
 import { SAND, SAND_HEX, sandColor, SAND_PITCH } from './palette';
@@ -74,9 +75,9 @@ T.setTier(tier);
 
 let grains = new Grains(tier.maxGrains);
 T.scene.add(grains.points);
-const blocks = new Blocks(T, T.blockGeometry());
+const blocks = new Blocks(T, tier.blockSegments);
 blocks.setShadows(tier.shadows);
-T.scene.add(blocks.mesh, blocks.bridges, blocks.ghostMesh);
+T.scene.add(blocks.mesh, blocks.ghostMesh);
 const bottle = new Bottle();
 bottle.setScale(BOTTLE_SCALE);
 T.scene.add(bottle.group);
@@ -103,7 +104,7 @@ systemReduced?.addEventListener?.('change', () => {
 function setTier(t: Tier): void {
   tier = t;
   T.setTier(t);
-  blocks.setGeometry(T.blockGeometry());
+  blocks.setSegments(t.blockSegments);
   blocks.setShadows(t.shadows);
   T.buildTray(T.cols, T.rows);
   T.scene.remove(grains.points);
@@ -192,7 +193,8 @@ let S: Session = Session.restore(boards, loadJson(SAVE_KEY), shelfAtLoad) as Ses
 /** Was there a game in progress to come back to? */
 const resumed = !!S;
 if (!S) {
-  S = new Session(boards, newSeed(), shelfAtLoad);
+  // `?seed=N` (testing, with ?tray) picks the same boards every load, for side-by-side screenshots
+  S = new Session(boards, Number(params.get('seed')) || newSeed(), shelfAtLoad);
   S.begin(trayParam || 1, true);
 } else if (S.cleared) {
   // closed during the clear: the bottle is already on the shelf, so carry on to the next level
@@ -408,7 +410,7 @@ function drawFillIn(f: FillIn, t: number): void {
       if (q >= 1) landed[k.cell] = k.color;
     }
   }
-  blocks.bridgesFor(cols, T.rows, (i) => landed[i]);
+  blocks.joinSettled(cols, T.rows, (i) => landed[i]);
 }
 
 /** The move counter fills up like sand pouring in. */
@@ -856,21 +858,21 @@ function drawSettled(b: Board, glowAt: (i: number) => number, liftAt?: (i: numbe
     const z = liftAt ? liftAt(i) : 0;
     blocks.block({ x: T.cellX(c), y0: T.cellY(r) - BLOCK / 2, h: 1, color: v, glow: glowAt(i), z, sx: 1 + z * 0.25, sz: 1 + z * 0.25 });
   }
-  blocks.bridgesFor(cols, b.rows, (i) => cells[i], glowAt);
+  blocks.joinSettled(cols, b.rows, (i) => cells[i]);
 }
 
 function drawPour(p: PourPlan, t: number): void {
   if (p.quick) return drawQuickPour(p, t);
   const cols = T.cols;
   const rows = T.rows;
-  // still blocks, with bridges among them
+  // still blocks, joined into pieces
   const still = new Int8Array(cols * rows).fill(EMPTY);
   for (const [id, cell] of p.still) {
     const color = p.colorOf.get(id)!;
     still[cell] = color;
     blocks.block({ x: T.cellX(cell % cols), y0: T.cellY((cell / cols) | 0) - BLOCK / 2, h: 1, color });
   }
-  // landed blocks join the still set once they've firmed up, so bridges grow as the sand settles
+  // landed blocks join the still set once they've firmed up, so pieces knit together as the sand settles
   for (const b of p.blocks) {
     const x = T.cellX(b.col);
     const srcY = T.cellY(b.fromRow) - BLOCK / 2;
@@ -892,7 +894,7 @@ function drawPour(p: PourPlan, t: number): void {
       blocks.block({ x, y0: dstY, h: f, sy, sx, sz: sx, color: b.color });
     }
   }
-  blocks.bridgesFor(cols, rows, (i) => still[i]);
+  blocks.joinSettled(cols, rows, (i) => still[i]);
 }
 
 /** Reduced motion: the blocks that fall shrink away where they were and grow where they land. */
@@ -912,7 +914,7 @@ function drawQuickPour(p: PourPlan, t: number): void {
     if (inn > 0.01) blocks.block({ x, y0: T.cellY(b.toRow) - (BLOCK * inn) / 2, h: 1, sx: inn, sy: inn, sz: inn, color: b.color });
     if (inn >= 1) still[b.toRow * cols + b.col] = b.color;
   }
-  blocks.bridgesFor(cols, T.rows, (i) => still[i]);
+  blocks.joinSettled(cols, T.rows, (i) => still[i]);
 }
 
 function drawFlights(t: number): void {
@@ -927,19 +929,27 @@ function drawFlights(t: number): void {
     const pose = flightPose(f, t);
     const pourDur = f.done - f.arrive;
     const nb = f.blocks.length;
+    // pour in: blocks melt into the mouth one after another
+    const meltOf = (k: number) =>
+      t > f.arrive ? clamp((t - (f.arrive + (k / nb) * pourDur * 0.6)) / (pourDur * 0.4 + 0.05), 0, 1) : 0;
+    // the piece flies as one: blocks stay joined until each starts to melt
+    const joins = groupMasks(
+      f.blocks.map((b) => ({ x: b.ox, y: b.oy })),
+      (k) => meltOf(k) === 0,
+    );
     f.blocks.forEach((b, k) => {
       let s = pose.s;
-      if (t > f.arrive) {
-        // pour in: blocks melt into the mouth one after another
-        const kt = f.arrive + (k / nb) * pourDur * 0.6;
-        const melt = clamp((t - kt) / (pourDur * 0.4 + 0.05), 0, 1);
+      const melt = meltOf(k);
+      if (melt > 0) {
         s *= 1 - melt;
         if (s <= 0.01) return;
       }
       const cs = Math.cos(pose.spin);
       const sn = Math.sin(pose.spin);
-      const ox = b.ox * pose.s;
-      const oy = b.oy * pose.s;
+      // a joined piece squashes as one (its blocks' spacing too), so no gaps open up inside it
+      const whole = joins[k] !== 0;
+      const ox = b.ox * pose.s * (whole ? pose.sx : 1);
+      const oy = b.oy * pose.s * (whole ? pose.sy : 1);
       const x = pose.x + ox * cs;
       const z = pose.z - ox * sn;
       const y = pose.y + oy;
@@ -954,6 +964,7 @@ function drawFlights(t: number): void {
         rotY: pose.spin,
         color: b.color,
         glow: pose.glow,
+        join: joins[k],
       });
     });
   }

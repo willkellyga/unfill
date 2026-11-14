@@ -281,11 +281,6 @@ export class Terrarium {
     sc.updateProjectionMatrix();
   }
 
-  /** Block geometry for the current tier: a soft rounded cube. */
-  blockGeometry(): THREE.BufferGeometry {
-    return new RoundedBoxGeometry(BLOCK, BLOCK, BLOCK_DEPTH, this.tier.blockSegments, 0.13);
-  }
-
   cellX(c: number): number {
     return c - (this.cols - 1) / 2;
   }
