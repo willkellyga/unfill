@@ -14,8 +14,7 @@ const { chromium } = require('playwright');
   const throttle = Number(process.argv[3] || 4);
   const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const page = await browser.newPage({ viewport: { width: 390, height: 664 } });
-  // BLOCKS=merged (etc.) measures a joined-sand style (merged.ts)
-  await page.goto(`http://localhost:4173/?tray=45${process.env.BLOCKS ? '&blocks=' + process.env.BLOCKS : ''}`);
+  await page.goto('http://localhost:4173/?tray=45');
   await page.waitForFunction(() => window.unfill);
   await page.evaluate((t) => {
     window.unfill.dismissIntro();
