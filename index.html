@@ -30,6 +30,11 @@
     </header>
 
     <div class="toast" id="toast" role="status"></div>
+    <div class="banner" id="banner" aria-live="polite">
+      <div class="stars" id="bannerStars" hidden></div>
+      <b id="bannerTitle"></b>
+      <span id="bannerSub"></span>
+    </div>
     <output class="fps" id="fps" hidden></output>
 
     <footer class="foot" id="bar">
@@ -37,6 +42,8 @@
       <div class="controls">
         <button id="undo" type="button" aria-label="Undo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7H4V2M4.6 7A8.5 8.5 0 1 1 3.5 13"/></svg><span class="lbl">Undo</span></button>
         <button id="restart" type="button" aria-label="Restart level"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 4v5h-5M19.4 9A8.5 8.5 0 1 0 20.5 13"/></svg><span class="lbl">Restart level</span></button>
+        <button id="hintBtn" type="button" aria-label="Hint"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.3 1.1 2.2h5c0-.9.4-1.6 1.1-2.2A6 6 0 0 0 12 3z"/></svg><span class="lbl">Hint</span></button>
+        <button id="shelfBtn" type="button" aria-label="Bottle shelf"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2.8h4M10.4 2.8v3.4L8.2 9a2.2 2.2 0 0 0-.5 1.4V19a2 2 0 0 0 2 2h4.6a2 2 0 0 0 2-2v-8.6c0-.5-.2-1-.5-1.4l-2.2-2.8V2.8"/><path d="M7.8 14.5h8.4"/></svg><span class="lbl">Shelf</span><span class="badge" id="shelfCount" hidden>0</span></button>
         <button id="gear" type="button" aria-label="Settings" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.6M12 18.9v2.6M21.5 12h-2.6M5.1 12H2.5M18.7 5.3l-1.8 1.8M7.1 16.9l-1.8 1.8M18.7 18.7l-1.8-1.8M7.1 7.1 5.3 5.3"/><circle cx="12" cy="12" r="6.6"/></svg><span class="lbl">Settings</span></button>
       </div>
       <details class="more" id="more">
@@ -76,6 +83,10 @@
             </div>
           </div>
           <div class="setting col">
+            <span>New game <small>a fresh run from level 1; your bottles stay on the shelf</small></span>
+            <button id="startOver" type="button">Start over from level 1</button>
+          </div>
+          <div class="setting col">
             <span>Tap timings <small id="timingText"></small></span>
             <button id="copyTimings" type="button">Copy tap timings</button>
           </div>
@@ -83,11 +94,23 @@
       </details>
     </footer>
 
+    <section class="shelf" id="shelf" hidden role="dialog" aria-modal="true" aria-labelledby="shelfTitle">
+      <header class="shelfHead">
+        <div>
+          <h2 id="shelfTitle">Your shelf</h2>
+          <small id="shelfNote"></small>
+        </div>
+        <button id="shelfClose" type="button" aria-label="Close the shelf"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </header>
+      <p class="shelfDetail" id="shelfDetail" aria-live="polite"></p>
+      <div class="shelfScroll"><div class="shelfGrid" id="shelfGrid"></div></div>
+    </section>
+
     <div class="intro" id="intro">
       <div class="introInner">
-        <h1>Unfill</h1>
-        <p>Tap a block to lift its color out of the tray. The sand above pours down. Empty the tray to fill the bottle, and the next level pours straight in.</p>
-        <p class="small">Hold a block to preview where the sand lands.</p>
+        <h1 id="introTitle">Unfill</h1>
+        <p id="introText">Tap a block to lift its color out of the tray. The sand above pours down. Empty the tray to fill the bottle, and the next level pours straight in.</p>
+        <p class="small" id="introSmall">Hold a block to preview where the sand lands. Stuck? The bulb shows a good next lift.</p>
         <button id="startBtn" type="button" class="primary">Begin</button>
       </div>
     </div>

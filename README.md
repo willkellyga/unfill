@@ -2,7 +2,40 @@
 
 A cozy, phone-first web puzzle. This repository has milestone 1 (the rules lab: a flat 2D test board on the shared
 rules core), milestone 2 (the board library: generator, solver, difficulty rating and progression), milestone 3
-(the move economy) and milestone 4 (the 3D terrarium slice).
+(the move economy), milestone 4 (the 3D terrarium slice) and milestone 5 (the full game loop).
+
+## Milestone 5: the full game loop (Nov 14, 2026)
+
+The game now plays as one endless, saved run, still with no card or click between levels.
+
+- **Level and clear moments, without stopping.** As a tray pours in, a banner floats over it for under 2 s:
+  "Level 12 · par 11 · +13 moves", noting a bigger tray, a new color or a small palette-cleanser. When the tray
+  empties, the bottle corks and the stars pop in over the empty glass (3 at par or better, 2 up to par + 2, 1 for
+  any clear; "Beat par!" when she finds a shorter route than the solver), then the bottle slides off toward the
+  shelf and the next level pours in by itself. A tap still skips ahead.
+- **Move pool, undo, restart** as in the plan and milestone 3: unlimited undo that refunds its move, restart that
+  puts the pool back (and now pours the tray's sand back in), out of moves is a gentle note, never a game over.
+  Leftover moves above the 15-move bank cap aren't lost: they tie a ribbon on that level's bottle.
+- **Hints** (the bulb, free and unlimited): the next lift of a way to finish glows and rises toward her. On the stored
+  solution's path it's the next move of that solution; off it, a background search (a Web Worker running widening
+  beams, `src/core/hint.ts`) finds one from her board. If workers are blocked, a narrower search runs on the page.
+- **The on-track glow.** After every move the moves chip keeps a soft green glow while there's a known way to finish
+  with the moves left. If the search can't find one in about half a second, the glow fades and the help line says
+  "Undo might help" (never "impossible", since the search can miss).
+- **Save and resume.** Every action saves to localStorage: the run's seed, the level, the board's library id and
+  transform, the pool, the taps so far and recently played boards. Reopening rebuilds the tray by replaying the taps
+  through the rules, so she lands exactly where she was, mid-board included ("Welcome back · Keep playing"). A save
+  that doesn't fit the library is ignored rather than shown broken. Settings › Start over begins a fresh run from
+  level 1 and keeps the shelf. `?tray=N` and `?nosave` play without touching the save.
+- **The bottle shelf** (the bottle button, with a count badge that bumps as each bottle arrives): every corked bottle,
+  newest first, drawn from her actual lifts (layers in order, color and size, wavy hand-poured edges, cork, ribbon).
+  Tap one for its level, lifts against par, stars and date.
+- **Checks.** `tests/session.test.ts` plays 60 levels in a row with undos, restarts and a save-and-reload after every
+  action, and checks the fairness guarantee at every board start. `scripts/loop-check.cjs` plays the built game in
+  headless Chromium through real taps: N levels in a row following hints and random groups, with undos, restarts,
+  the shelf, and page reloads mid-board, failing on any page error or broken invariant (35 levels pass).
+
+The game-loop state lives in `src/core/session.ts` (pure, no DOM), so the tests and the app share it.
 
 ## Milestone 4: 3D terrarium slice (Nov 14, 2026)
 
@@ -51,8 +84,7 @@ icon buttons sit along the bottom, and the gear opens the settings panel.
 - `npm run build:single` writes `dist-single/unfill.html`, one self-contained file (about 1.4 MB) that runs from
   disk or as a published page.
 
-What's still for later milestones: intro and shelf screens, save and resume, hints and the on-track glow (M5);
-color-blind patterns, reduced motion, home-screen install (M6).
+What's still for later milestones (after M5): color-blind patterns, reduced motion, home-screen install (M6).
 
 ## Milestone 3: move economy (Nov 14, 2026)
 
@@ -101,6 +133,7 @@ npm run economy:sample && npm run economy:tune   # re-tune the move economy afte
 npm run build      # type-check and build a static site into dist/ (the game and the lab)
 npm run build:single   # the game as one self-contained HTML file, dist-single/unfill.html
 npm run perf       # after a build and `npx vite preview --port 4173`: per-frame CPU time on a slowed CPU
+npm run loop-check # after a build and `npx vite preview --port 4173`: plays 30 levels in a row through real taps
 ```
 
 To play on a phone, keep `npm run dev` running and open the "Network" address it prints
@@ -135,6 +168,8 @@ The 2D lab is at `lab.html` (for example http://localhost:5173/lab.html).
   - `progression.ts`: which board comes next (tiers by board number, the sawtooth, seeded picking).
   - `economy.ts`: the move pool: grants, slack schedule, carry-over and bank cap, undo and restart.
   - `pacing.ts`: play-time estimates and the 12-minute session target.
+  - `session.ts`: the game loop's state: the board and its history, the pool, level changes, keepsake bottles,
+    the save format and resume. `hint.ts`: the hint and on-track search.
 - `src/library/boards.json`: the board library.
 - `gen/`: the Node command that writes the library, and the difficulty study.
 - `src/app/game/`: the 3D game (Three.js).
@@ -143,13 +178,15 @@ The 2D lab is at `lab.html` (for example http://localhost:5173/lab.html).
     bridges that join a group, the preview ghost. `pour.ts`: the hourglass pour timeline. `grains.ts`: GPU grains.
   - `bottle.ts`: the keepsake bottle, its sand layers and the cork. `glass.ts`: the glass material.
   - `audio.ts`: procedural sound. `textures.ts`: procedural textures. `palette.ts`, `quality.ts`.
+  - `shelf.ts`: the bottle shelf. `solver-client.ts`: talks to the hint worker (`src/worker/solve.worker.ts`).
 - `src/app/lab/`: the 2D lab (canvas, input, sound).
-- `scripts/perf.cjs`: the performance check. `scripts/single-file.mjs`: the one-file build.
+- `scripts/perf.cjs`: the performance check. `scripts/loop-check.cjs`: the 30-levels-in-a-row browser check. `scripts/single-file.mjs`: the one-file build.
 - `tests/rules.test.ts`: property tests with fast-check, plus worked examples of the repose rule.
 - `tests/solver.test.ts`: solver checks, including exact search against brute force on tiny boards.
 - `tests/library.test.ts`: the library replay and target checks.
 - `tests/progression.test.ts`: the progression schedule and sawtooth.
 - `tests/economy.test.ts`: the move economy and the simulated-session targets.
+- `tests/session.test.ts`: the game loop, save and resume, and the hint search.
 
 ## The repose rule, exactly
 

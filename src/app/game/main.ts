@@ -3,22 +3,14 @@ import * as THREE from 'three';
 import {
   EMPTY,
   LIBRARY_RULE,
+  Session,
   countBlocks,
-  grantFor,
   groupAt,
-  isCleared,
   lift,
-  nextBoardPool,
-  pickBoard,
-  refundMove,
-  restartBoard,
-  spendMove,
-  startPool,
-  transformEntry,
   type Board,
+  type Keepsake,
   type Library,
-  type MovePool,
-  type Pick,
+  type Snap,
 } from '../../core';
 import libraryText from '../../library/boards.json?raw';
 import { Audio } from './audio';
@@ -29,6 +21,8 @@ import { SAND, sandColor, SAND_PITCH } from './palette';
 import { FIRM, fallTime, planPour, type PourPlan } from './pour';
 import { SLOW_FRAME_MS, TIERS, type Tier, type TierName } from './quality';
 import { BLOCK, BOTTLE_SCALE, Terrarium } from './scene';
+import { renderShelf } from './shelf';
+import { SolverClient } from './solver-client';
 
 // ---------------------------------------------------------------- setup
 
@@ -95,11 +89,6 @@ function setTier(t: Tier): void {
 
 // ---------------------------------------------------------------- game state
 
-interface Snap {
-  board: Board;
-  ids: Int32Array;
-}
-
 interface Flight {
   t0: number;
   blocks: { color: number; ox: number; oy: number; x: number; y: number }[];
@@ -125,72 +114,109 @@ interface Preview {
   after: Snap;
 }
 
-let runSeed = Number(store.get('unfill-run-seed')) || 1 + Math.floor(Math.random() * 1e9);
-store.set('unfill-run-seed', String(runSeed));
-let n = 1;
-let pick!: Pick;
-let total = 0;
-let start!: Snap;
-let cur!: Snap;
-let history: Snap[] = [];
-let pool!: MovePool;
 let pour: PourPlan | null = null;
 let flights: Flight[] = [];
 let press: Press | null = null;
 let preview: Preview | null = null;
 let hover: number[] | null = null;
-let cleared = false;
 let fillIn: FillIn | null = null;
 /** Scene time at which the next level starts, once the bottle is corked and set aside. */
 let pendingNext: number | null = null;
 let corked = false;
 let readyAt = 0; // when the tray last became playable, for the tap timing log
-const recent = new Set<string>();
 
-function idsFor(b: Board): Int32Array {
-  return Int32Array.from(b.cells, (v, i) => (v === EMPTY ? -1 : i));
+// ---------------------------------------------------------------- the session, saved after every action
+
+const SAVE_KEY = 'unfill-save';
+const SHELF_KEY = 'unfill-shelf';
+const params = new URLSearchParams(location.search);
+/** `?tray=N` jumps straight to a level for testing, without touching her saved game. */
+const trayParam = Number(params.get('tray')) || 0;
+const ephemeral = trayParam > 0 || params.has('nosave');
+
+function loadJson(key: string): unknown {
+  if (ephemeral) return null;
+  try {
+    return JSON.parse(store.get(key) || 'null');
+  } catch {
+    return null;
+  }
 }
 
-/**
- * Start level `num`. With `fresh`, the move pool starts over (first level, or jumping to a level). Otherwise the
- * level follows the one just cleared: leftover moves carry over and the new tray's sand pours in from above.
- */
-function startBoard(num: number, fresh: boolean): void {
+function loadShelf(): Keepsake[] {
+  const v = loadJson(SHELF_KEY);
+  return Array.isArray(v) ? (v as Keepsake[]).filter((k) => k && Array.isArray(k.layers) && Number.isInteger(k.n)) : [];
+}
+
+const newSeed = () => 1 + Math.floor(Math.random() * 1e9);
+const shelfAtLoad = loadShelf();
+let S: Session = Session.restore(library.boards, loadJson(SAVE_KEY), shelfAtLoad) as Session;
+/** Was there a game in progress to come back to? */
+const resumed = !!S;
+if (!S) {
+  S = new Session(library.boards, newSeed(), shelfAtLoad);
+  S.begin(trayParam || 1, true);
+} else if (S.cleared) {
+  // closed during the clear: the bottle is already on the shelf, so carry on to the next level
+  S.next();
+}
+
+function persist(): void {
+  if (!ephemeral) store.set(SAVE_KEY, JSON.stringify(S.toSave()));
+}
+function persistShelf(): void {
+  if (!ephemeral) store.set(SHELF_KEY, JSON.stringify(S.shelf));
+}
+
+/** Show the session's current board: the tray, the bottle with the layers poured so far, the HUD. */
+function showBoard(): void {
+  pendingNext = null;
   fastForward();
   endFillIn();
-  pendingNext = null;
-  const before = pool ? pool.moves : 0;
   cancelPress();
-  n = num;
-  pick = pickBoard(library.boards, n, runSeed, recent);
-  recent.add(pick.entry.id);
-  if (recent.size > 200) recent.delete(recent.values().next().value!);
-  const { board } = transformEntry(pick.entry, pick.transform);
-  const grant = grantFor(pick.slot, pick.entry);
-  if (fresh || !pool) pool = startPool(grant);
-  else {
-    const next = nextBoardPool(pool, grant);
-    pool = { moves: next.moves, atBoardStart: next.atBoardStart };
-  }
-  start = { board, ids: idsFor(board) };
-  cur = start;
-  total = countBlocks(board);
-  history = [];
-  cleared = false;
-  corked = false;
-  T.buildTray(board.cols, board.rows);
+  clearHint();
+  T.buildTray(S.cur.board.cols, S.cur.board.rows);
   bottle.reset();
   placeBottle();
   layout();
-  const t = now();
-  bottle.enterAt(t);
-  if (!fresh) {
-    fillIn = planFillIn(board, t + 0.15);
-    countUp(before, pool.moves, 0.9);
-  }
+  corked = false;
+  S.history.forEach((snap, k) => {
+    const after = k + 1 < S.history.length ? S.history[k + 1] : S.cur;
+    const size = countBlocks(snap.board) - countBlocks(after.board);
+    bottle.addLayer(sandColor(snap.board.cells[S.taps[k]]), size / S.total, -2, -1);
+  });
+  bottle.settleAll();
+  bottle.update(now());
   updateHud();
   readyAt = performance.now();
-  toast(fresh ? `Level ${n} · par ${pick.entry.par}` : `Level ${n} · +${grant} moves`);
+  persist();
+  checkTrack();
+}
+
+/**
+ * Start level `num` with a fresh move pool (the first level, a jump, or starting over), shown at once.
+ */
+function startBoard(num: number, fresh: boolean): void {
+  if (fresh) {
+    S.begin(num, true);
+    showBoard();
+    bottle.enterAt(now());
+    levelBanner(null);
+    return;
+  }
+  nextLevel();
+}
+
+/** The level after a clear: leftover moves carry over and the new tray's sand pours in from above. */
+function nextLevel(): void {
+  const prev = { cols: S.cur.board.cols, rows: S.cur.board.rows, colors: S.pick.entry.colors };
+  const { before } = S.next();
+  showBoard();
+  const t = now();
+  bottle.enterAt(t);
+  fillIn = planFillIn(S.cur.board, t + 0.15);
+  countUp(before, S.pool.moves, 0.9);
+  levelBanner(prev);
 }
 
 // ---------------------------------------------------------------- the next level pours in
@@ -284,23 +310,20 @@ function placeBottle(): void {
 // ---------------------------------------------------------------- lifting
 
 function doLift(cell: number): void {
-  if (cleared) return;
-  const spent = spendMove(pool);
-  if (!spent) {
+  if (S.cleared) return;
+  const out = S.lift(cell, Date.now());
+  if (out === 'out') {
     audio.bonk();
     toast('Out of moves. Undo gives one back, or restart the tray.');
     nudgeButtons();
     return;
   }
-  const res = lift(cur.board, cell, RULE, cur.ids);
-  if (!res) return;
+  if (!out) return;
+  const { before, res, color } = out;
   const t0 = now();
   logTap();
-  pool = spent;
-  const before = cur;
-  history.push(cur);
-  cur = { board: res.board, ids: res.trace!.ids };
   hover = null;
+  clearHint();
 
   // the tray pour, starting as the group leaves its cells
   pour = planPour(before.board, before.ids, res.group, res.trace!.steps[0] ?? [], t0 + 0.12);
@@ -308,7 +331,7 @@ function doLift(cell: number): void {
   pourSound(pour, t0);
 
   // the group's flight to the bottle and the layer it pours
-  const color = before.board.cells[cell];
+  const total = S.total;
   const f = makeFlight(res.group, before.board.cols, color, t0);
   flights.push(f);
   const base = bottle.surfaceY();
@@ -332,8 +355,10 @@ function doLift(cell: number): void {
       /* ignore */
     }
   }
-  if (isCleared(cur.board)) cleared = true;
+  if (out.keepsake) persistShelf();
+  persist();
   updateHud();
+  checkTrack();
 }
 
 function makeFlight(group: number[], cols: number, color: number, t0: number): Flight {
@@ -527,7 +552,7 @@ function fastForward(): void {
   if (pendingNext !== null) {
     // tapped while the bottle was being set aside: go straight to the next level
     pendingNext = null;
-    window.setTimeout(() => startBoard(n + 1, false), 0);
+    window.setTimeout(nextLevel, 0);
   }
   if (fillIn) {
     endFillIn();
@@ -544,70 +569,235 @@ function fastForward(): void {
 }
 
 function undo(): void {
-  if (!history.length || cleared) return;
+  if (!S.history.length || S.cleared) return;
   fastForward();
   cancelPress();
-  cur = history.pop()!;
-  pool = refundMove(pool);
+  clearHint();
+  S.undo();
   bottle.popLayer();
-  cleared = false;
   corked = false;
   pendingNext = null;
+  persist();
   updateHud();
+  checkTrack();
 }
 
+/** Restart: the bottle empties and the tray's starting sand pours back in from the top. */
 function restart(): void {
-  if (cleared) return;
+  if (!S.history.length || S.cleared) return;
   fastForward();
   cancelPress();
-  cur = start;
-  history = [];
-  pool = restartBoard(pool);
+  clearHint();
+  S.restart();
   bottle.reset();
-  cleared = false;
   corked = false;
   pendingNext = null;
   bottle.uncork();
+  fillIn = planFillIn(S.cur.board, now() + 0.05);
+  persist();
   updateHud();
+  checkTrack();
   readyAt = performance.now();
 }
 
 // ---------------------------------------------------------------- clear: cork, set the bottle aside, next level
 
 function maybeCork(t: number): void {
-  if (!cleared || corked || pour || flights.length) return;
+  if (!S.cleared || corked || pour || flights.length || fillIn) return;
   corked = true;
   bottle.corkAt(t + 0.15);
   audio.cork(0.15 + 0.42, 0.15 + 0.75);
   audio.chime(0.15 + 0.95);
   launchSparkle(bottle.corkSeatTime);
-  const lifts = history.length;
-  const par = pick.entry.par;
-  const stars = lifts <= par ? 3 : lifts <= par + 2 ? 2 : 1;
-  const verdict = lifts < par ? 'Beat par!' : lifts === par ? 'Par!' : `${lifts} lifts, par ${par}`;
-  window.setTimeout(() => toast(`${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}  Level ${n} · ${verdict}`), 700);
-  // the corked bottle slides off along the rail, then the next tray pours in
-  bottle.exitAt(bottle.corkSeatTime + 0.6);
-  pendingNext = bottle.corkSeatTime + 0.95;
+  clearBanner();
+  window.setTimeout(() => {
+    if (S.cleared) clearedBanner(S.shelf[S.shelf.length - 1]);
+  }, 450);
+  // the corked bottle slides off along the rail toward the shelf, then the next tray pours in
+  bottle.exitAt(bottle.corkSeatTime + 0.75);
+  window.setTimeout(bumpShelf, (bottle.corkSeatTime + 1.1 - t) * 1000);
+  pendingNext = bottle.corkSeatTime + 1.2;
 }
 
 function maybeNextLevel(t: number): void {
   if (pendingNext !== null && t >= pendingNext) {
     pendingNext = null;
-    startBoard(n + 1, false);
+    nextLevel();
   }
+}
+
+// ---------------------------------------------------------------- hints and the on-track glow
+
+const solver = new SolverClient();
+/** The latest search answer, for the board it was asked about. */
+let answer: { key: string; taps: number[]; fits: boolean } | null = null;
+/** Is there a known way to finish with the moves left? null while not known yet. */
+let onTrack: boolean | null = true;
+let hint: { cells: number[]; t0: number } | null = null;
+let hintAsked = 0;
+
+/** Identifies the board as it stands, so a late answer about an older board is ignored. */
+const boardKey = () => `${S.n}|${S.pick.entry.id}|${S.taps.join(',')}`;
+
+/**
+ * After every move: is there still a way to finish with the moves left? On the stored solution's path the
+ * answer is known at once; otherwise the background search looks for one. A miss only fades the glow and
+ * suggests Undo, because the search can miss a solution.
+ */
+function checkTrack(): void {
+  if (S.cleared) {
+    onTrack = true;
+    solver.cancel();
+    updateTrack();
+    return;
+  }
+  const known = S.knownFinish();
+  if (known && known.length <= S.pool.moves) {
+    answer = { key: boardKey(), taps: known, fits: true };
+    onTrack = true;
+    solver.cancel();
+    updateTrack();
+    return;
+  }
+  const key = boardKey();
+  if (answer?.key === key) {
+    onTrack = answer.fits;
+    updateTrack();
+    return;
+  }
+  void solver.ask(S.cur.board, S.pool.moves).then((f) => {
+    if (!f || boardKey() !== key) return;
+    answer = { key, taps: f.taps, fits: f.fits };
+    onTrack = f.fits;
+    updateTrack();
+  });
+}
+
+function updateTrack(): void {
+  const count = document.querySelector('.count')!;
+  count.classList.toggle('ontrack', onTrack === true && !S.cleared && S.pool.moves > 0);
+  if (onTrack === false && S.pool.moves > 0 && !preview && !hint) setHint('Undo might help', true);
+  else if (onTrack !== false && $('hint').textContent === 'Undo might help') setHint('');
+}
+
+/** Hints are free: the glowing group is the next lift of a way to finish. */
+async function showHint(): Promise<void> {
+  audio.unlock();
+  if (S.cleared) return;
+  fastForward();
+  cancelPress();
+  if (S.pool.moves === 0) {
+    setHint('Out of moves. Undo gives one back, or restart the level.', true);
+    nudgeButtons();
+    return;
+  }
+  const key = boardKey();
+  const ask = ++hintAsked;
+  let a = answer?.key === key ? answer : null;
+  if (!a) {
+    const known = S.knownFinish();
+    if (known && known.length <= S.pool.moves) a = { key, taps: known, fits: true };
+  }
+  if (!a) {
+    setHint('Thinking…', true);
+    const f = await solver.ask(S.cur.board, S.pool.moves, 900);
+    if (!f || boardKey() !== key || ask !== hintAsked) return;
+    a = answer = { key, taps: f.taps, fits: f.fits };
+    onTrack = f.fits;
+    updateTrack();
+  }
+  if (!a.taps.length) return;
+  hint = { cells: groupAt(S.cur.board, a.taps[0]), t0: now() };
+  setHint(a.fits ? 'Try lifting the glowing group' : 'Try the glowing group. Undo might help too.', true);
+  audio.pat(0, 0.12);
+}
+
+function clearHint(): void {
+  hintAsked++;
+  if (!hint) return;
+  hint = null;
+  setHint('');
+}
+
+// ---------------------------------------------------------------- banners: the level coming in, the bottle corked
+
+let bannerTimer = 0;
+
+function banner(stars: number | null, title: string, sub: string, ms: number, kind: 'level' | 'clear'): void {
+  const el = $('banner');
+  const s = $('bannerStars');
+  s.hidden = stars === null;
+  if (stars !== null) {
+    s.innerHTML = [0, 1, 2].map((k) => `<i class="${k < stars ? 'on' : ''}" style="animation-delay:${0.08 + k * 0.14}s">★</i>`).join('');
+  }
+  $('bannerTitle').textContent = title;
+  $('bannerSub').textContent = sub;
+  $('bannerSub').hidden = !sub;
+  el.className = `banner ${kind}`;
+  void el.offsetWidth;
+  el.classList.add('show');
+  clearTimeout(bannerTimer);
+  bannerTimer = window.setTimeout(() => el.classList.remove('show'), ms);
+}
+
+function clearBanner(): void {
+  clearTimeout(bannerTimer);
+  $('banner').classList.remove('show');
+}
+
+/** As a level pours in: its number, par and the moves it brought. Notes a bigger tray or a new color. */
+function levelBanner(prev: { cols: number; rows: number; colors: number } | null): void {
+  const { cols, rows } = S.cur.board;
+  const colors = S.pick.entry.colors;
+  let sub = prev ? `par ${S.par} · +${S.grant} moves` : `par ${S.par} · ${S.pool.moves} moves`;
+  if (prev && (cols !== prev.cols || rows !== prev.rows) && cols * rows > prev.cols * prev.rows) sub = `A bigger tray! ${sub}`;
+  else if (prev && colors > prev.colors) sub = `A new color! ${sub}`;
+  else if (prev && cols * rows < prev.cols * prev.rows) sub = `A little one · ${sub}`;
+  banner(null, `Level ${S.n}`, sub, 1700, 'level');
+}
+
+function clearedBanner(k: Keepsake | undefined): void {
+  if (!k) return;
+  const verdict = k.lifts < k.par ? 'Beat par!' : k.lifts === k.par ? 'Par!' : k.stars === 2 ? 'Nicely done' : 'Tray cleared';
+  let sub = `${k.lifts} ${k.lifts === 1 ? 'lift' : 'lifts'} · par ${k.par}`;
+  if (k.spare > 0) sub += ` · ${k.spare} spare ${k.spare === 1 ? 'move' : 'moves'} became a ribbon`;
+  banner(k.stars, verdict, sub, 2600, 'clear');
+}
+
+// ---------------------------------------------------------------- the shelf
+
+function bumpShelf(): void {
+  const b = $('shelfBtn');
+  $('shelfCount').textContent = String(S.shelf.length);
+  $('shelfCount').hidden = S.shelf.length === 0;
+  b.classList.remove('bump');
+  void b.offsetWidth;
+  b.classList.add('bump');
+}
+
+function openShelf(): void {
+  audio.unlock();
+  more.open = false;
+  renderShelf($('shelfGrid'), $('shelfNote'), $('shelfDetail'), S.shelf);
+  $('shelf').hidden = false;
+  $('shelfClose').focus();
+}
+
+function closeShelf(): void {
+  $('shelf').hidden = true;
 }
 
 // ---------------------------------------------------------------- drawing
 
-function drawSettled(b: Board, glowAt: (i: number) => number): void {
+function drawSettled(b: Board, glowAt: (i: number) => number, liftAt?: (i: number) => number): void {
   const { cols, cells } = b;
   for (let i = 0; i < cells.length; i++) {
     const v = cells[i];
     if (v === EMPTY) continue;
     const c = i % cols;
     const r = (i / cols) | 0;
-    blocks.block({ x: T.cellX(c), y0: T.cellY(r) - BLOCK / 2, h: 1, color: v, glow: glowAt(i) });
+    const z = liftAt ? liftAt(i) : 0;
+    blocks.block({ x: T.cellX(c), y0: T.cellY(r) - BLOCK / 2, h: 1, color: v, glow: glowAt(i), z, sx: 1 + z * 0.25, sz: 1 + z * 0.25 });
   }
   blocks.bridgesFor(cols, b.rows, (i) => cells[i], glowAt);
 }
@@ -740,7 +930,16 @@ function frame(): void {
   else if (preview) drawPreview(preview, t);
   else {
     const hv = hover ? new Set(hover) : null;
-    drawSettled(cur.board, (i) => (hv && hv.has(i) ? 0.22 : 0));
+    const hn = hint ? new Set(hint.cells) : null;
+    // the hinted group breathes: it glows and rises a little toward her, then settles back
+    const wave = hint ? 0.5 - 0.5 * Math.cos((t - hint.t0) * 4.2) : 0;
+    const hg = 0.25 + 0.35 * wave;
+    const hz = 0.05 + 0.2 * wave;
+    drawSettled(
+      S.cur.board,
+      (i) => (hn && hn.has(i) ? hg : hv && hv.has(i) ? 0.22 : 0),
+      hn ? (i) => (hn.has(i) ? hz : 0) : undefined,
+    );
   }
   drawFlights(t);
   blocks.end(preview ? 0.38 + 0.18 * Math.sin(t * 7) : 0.5);
@@ -770,21 +969,21 @@ function cancelPress(): void {
 
 function showPreview(): void {
   if (!press) return;
-  const res = lift(cur.board, press.cell, RULE, cur.ids)!;
+  const res = lift(S.cur.board, press.cell, RULE, S.cur.ids)!;
   const finalCell = new Map<number, number>();
   res.trace!.ids.forEach((id, i) => {
     if (id >= 0) finalCell.set(id, i);
   });
   const moved = new Set<number>();
-  for (let i = 0; i < cur.board.cells.length; i++) {
-    const id = cur.ids[i];
+  for (let i = 0; i < S.cur.board.cells.length; i++) {
+    const id = S.cur.ids[i];
     if (id < 0 || res.group.includes(i)) continue;
     const to = finalCell.get(id)!;
     if (to !== i) moved.add(to);
   }
   preview = {
     group: res.group,
-    colors: res.group.map((i) => cur.board.cells[i]),
+    colors: res.group.map((i) => S.cur.board.cells[i]),
     moved,
     after: { board: res.board, ids: res.trace!.ids },
   };
@@ -800,20 +999,20 @@ canvas.addEventListener('pointerdown', (e) => {
     fastForward();
     return;
   }
-  if (cleared) {
+  if (S.cleared) {
     // a tap after the last lift hurries things along: finish the pour, then skip ahead to the next level
     fastForward();
     return;
   }
   const cell = T.pick(e.clientX, e.clientY);
-  if (cell === null || cur.board.cells[cell] === EMPTY) return;
+  if (cell === null || S.cur.board.cells[cell] === EMPTY) return;
   cancelPress();
   try {
     canvas.setPointerCapture(e.pointerId);
   } catch {
     /* fine */
   }
-  press = { pointerId: e.pointerId, cell, group: groupAt(cur.board, cell), timer: window.setTimeout(showPreview, HOLD_MS) };
+  press = { pointerId: e.pointerId, cell, group: groupAt(S.cur.board, cell), timer: window.setTimeout(showPreview, HOLD_MS) };
   hover = null;
 });
 
@@ -827,12 +1026,12 @@ canvas.addEventListener('pointermove', (e) => {
     }
     return;
   }
-  if (e.pointerType !== 'mouse' || pour || cleared) {
+  if (e.pointerType !== 'mouse' || pour || S.cleared) {
     hover = null;
     return;
   }
   const cell = T.pick(e.clientX, e.clientY);
-  hover = cell !== null && cur.board.cells[cell] !== EMPTY ? groupAt(cur.board, cell) : null;
+  hover = cell !== null && S.cur.board.cells[cell] !== EMPTY ? groupAt(S.cur.board, cell) : null;
   canvas.style.cursor = hover ? 'pointer' : 'default';
 });
 
@@ -858,18 +1057,20 @@ document.addEventListener('keydown', (e) => {
 // ---------------------------------------------------------------- HUD
 
 function updateHud(): void {
-  if (!$('moves').classList.contains('pour')) $('moves').textContent = String(pool.moves);
-  $('movesLabel').textContent = pool.moves === 1 ? 'move' : 'moves';
+  if (!$('moves').classList.contains('pour')) $('moves').textContent = String(S.pool.moves);
+  $('movesLabel').textContent = S.pool.moves === 1 ? 'move' : 'moves';
   $('levelLabel').innerHTML =
-    `<b>Level ${n}</b><span class="meta">par ${pick.entry.par}</span>`;
-  const left = countBlocks(cur.board);
+    `<b>Level ${S.n}</b><span class="meta">par ${S.pick.entry.par}</span>`;
+  const left = countBlocks(S.cur.board);
   $('left').textContent = `${left} ${left === 1 ? 'block' : 'blocks'} left`;
-  $('hud').classList.toggle('empty', pool.moves === 0 && !cleared);
+  $('hud').classList.toggle('empty', S.pool.moves === 0 && !S.cleared);
   // once a level is cleared it's done: the next one is already on its way
-  $<HTMLButtonElement>('undo').disabled = history.length === 0 || cleared;
-  $<HTMLButtonElement>('restart').disabled = history.length === 0 || cleared;
-  if (pool.moves === 0 && !cleared) setHint('Out of moves. Undo, or restart the level.', true);
-  else if (!preview) setHint('');
+  $<HTMLButtonElement>('undo').disabled = S.history.length === 0 || S.cleared;
+  $<HTMLButtonElement>('restart').disabled = S.history.length === 0 || S.cleared;
+  $<HTMLButtonElement>('hintBtn').disabled = S.cleared;
+  if (S.pool.moves === 0 && !S.cleared) setHint('Out of moves. Undo, or restart the level.', true);
+  else if (!preview && !hint) setHint('');
+  updateTrack();
 }
 
 const HOW = 'Tap a block to lift its group. Hold to preview.';
@@ -904,6 +1105,9 @@ function layout(): void {
   T.frame({ top: Math.max(8, top), bottom: H - bar.top + 6, side: 4 });
   const vp = T.viewport;
   grains.setScale(vp.h * T.renderer.getPixelRatio(), T.fov);
+  // banners sit in the middle of the tray
+  const mid = T.toScreen(new THREE.Vector3(0, T.rows / 2, 0));
+  document.documentElement.style.setProperty('--banner-y', `${Math.round(mid.y)}px`);
 }
 
 // ---------------------------------------------------------------- settings
@@ -969,6 +1173,26 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('[data-tray]')) {
     startBoard(Number(b.dataset.tray), true);
   };
 }
+let overArmed = 0;
+$('startOver').onclick = () => {
+  // two taps, so a stray one can't wipe her progress; the shelf of bottles stays
+  if (!overArmed) {
+    $('startOver').textContent = 'Tap again to start over';
+    overArmed = window.setTimeout(() => {
+      overArmed = 0;
+      $('startOver').textContent = 'Start over from level 1';
+    }, 3000);
+    return;
+  }
+  clearTimeout(overArmed);
+  overArmed = 0;
+  $('startOver').textContent = 'Start over from level 1';
+  more.open = false;
+  S = new Session(library.boards, newSeed(), S.shelf);
+  answer = null;
+  startBoard(1, true);
+};
+
 $('copyTimings').onclick = async () => {
   const s = timingSummary();
   const rows = loadTimings();
@@ -1025,7 +1249,7 @@ function logTap(): void {
   const at = performance.now();
   const think = Math.round(at - readyAt);
   // a long pause (the phone put down) isn't thinking time
-  pendingTap = think > 60000 ? null : { n, c: cur.board.cols, r: cur.board.rows, think, anim: 0, at };
+  pendingTap = think > 60000 ? null : { n: S.n, c: S.cur.board.cols, r: S.cur.board.rows, think, anim: 0, at };
 }
 
 /** The tray is playable again: the pour time is known, so the tap's row is saved. */
@@ -1054,16 +1278,34 @@ function timingSummary(): { taps: number; think: number; anim: number } | null {
 
 $('undo').onclick = undo;
 $('restart').onclick = restart;
+$('hintBtn').onclick = () => void showHint();
+$('shelfBtn').onclick = openShelf;
+$('shelfClose').onclick = closeShelf;
+$('shelf').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeShelf();
+});
 $('startBtn').onclick = () => {
   audio.unlock();
   $('intro').hidden = true;
   if (tierChoice === 'auto') tierCheck = { until: performance.now() + 2000, sum: 0, count: 0 };
+  levelBanner(null);
 };
+// her progress is saved after every move; this catches anything in flight when the page goes away
+window.addEventListener('pagehide', persist);
 
 window.addEventListener('resize', layout);
 window.visualViewport?.addEventListener('resize', layout);
 
-startBoard(Number(new URLSearchParams(location.search).get('tray')) || 1, true);
+showBoard();
+bumpShelf();
+$('shelfBtn').classList.remove('bump');
+if (resumed) {
+  $('introTitle').textContent = 'Welcome back';
+  $('introText').textContent =
+    `You're on level ${S.n}` + (S.shelf.length ? `, with ${S.shelf.length} ${S.shelf.length === 1 ? 'bottle' : 'bottles'} on your shelf.` : '.');
+  $('introSmall').textContent = S.taps.length ? 'Your tray is just as you left it.' : 'The next tray is ready.';
+  $('startBtn').textContent = 'Keep playing';
+}
 warmup();
 
 /**
@@ -1098,12 +1340,12 @@ requestAnimationFrame(frame);
 // Hooks for the scripted performance check (scripts/perf.mjs). Harmless in normal play.
 (window as unknown as { unfill: unknown }).unfill = {
   tap: (cell: number) => doLift(cell),
-  board: () => ({ cols: cur.board.cols, rows: cur.board.rows, cells: Array.from(cur.board.cells) }),
+  board: () => ({ cols: S.cur.board.cols, rows: S.cur.board.rows, cells: Array.from(S.cur.board.cells) }),
   busy: () => !!pour || flights.length > 0 || !!fillIn,
-  level: () => n,
-  moves: () => pool.moves,
-  /** Is a cleared level on its way out (cork, bottle exit) before the next one pours in? */
-  advancing: () => cleared || pendingNext !== null,
+  level: () => S.n,
+  moves: () => S.pool.moves,
+  /** Is a S.cleared level on its way out (cork, bottle exit) before the next one pours in? */
+  advancing: () => S.cleared || pendingNext !== null,
   frames: () => Array.from(frameTimes.slice(0, Math.min(frameIdx, frameTimes.length))),
   jsCost: () => jsCost,
   renderInfo: () => ({ calls: T.renderer.info.render.calls, triangles: T.renderer.info.render.triangles, points: T.renderer.info.render.points }),
@@ -1113,13 +1355,22 @@ requestAnimationFrame(frame);
     setTier(TIERS[name]);
   },
   start: (num: number) => startBoard(num, true),
+  shelf: () => S.shelf.length,
+  par: () => S.par,
+  taps: () => S.taps.slice(),
+  onTrack: () => onTrack,
+  hint: () => (hint ? hint.cells.slice() : null),
+  showHint: () => showHint(),
+  undo: () => undo(),
+  restart: () => restart(),
+  save: () => store.get(SAVE_KEY),
   dismissIntro: () => $('startBtn').click(),
   /** Freeze the scene clock (seconds) for frame-exact screenshots; null resumes. */
   freeze: (t: number | null) => {
     clockOverride = t;
   },
   now: () => now(),
-  solution: () => transformEntry(pick.entry, pick.transform).solution,
+  solution: () => S.knownFinish() ?? [],
   fastForward: () => fastForward(),
   cellScreen: (i: number) => T.toScreen(new THREE.Vector3(T.cellX(i % T.cols), T.cellY((i / T.cols) | 0), BLOCK / 2)),
   grains: () => ({ busyUntil: grains.busyUntil, cap: grains.capacity }),

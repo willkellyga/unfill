@@ -2,7 +2,7 @@
   "name": "unfill",
   "private": true,
   "version": "0.1.0",
-  "description": "Unfill: a cozy 3D sand puzzle. Milestones 1-4: rules lab, board library, move economy, 3D terrarium slice.",
+  "description": "Unfill: a cozy 3D sand puzzle. Milestones 1-5: rules lab, board library, move economy, 3D terrarium slice, full game loop.",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
@@ -15,7 +15,8 @@
     "economy:sample": "tsx gen/economy/sample.ts",
     "economy:tune": "tsx gen/economy/tune.ts",
     "build:single": "ARTIFACT=1 vite build && node scripts/single-file.mjs",
-    "perf": "node scripts/perf.cjs"
+    "perf": "node scripts/perf.cjs",
+    "loop-check": "node scripts/loop-check.cjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
