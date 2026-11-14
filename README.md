@@ -3,7 +3,16 @@
 A cozy, phone-first web puzzle. This repository has milestone 1 (the rules lab: a flat 2D test board on the shared
 rules core), milestone 2 (the board library: generator, solver, difficulty rating and progression), milestone 3
 (the move economy), milestone 4 (the 3D terrarium slice), milestone 5 (the full game loop), milestone 6 (polish: settings, color patterns, reduced motion, home-screen app)
-and milestone 7 (tuning par and the moves with bot runs).
+and milestone 7 (tuning par and the moves with bot runs), plus automatic playtest upload.
+
+## Playtest upload (Nov 14, 2026)
+
+Will asked for play data to come back by itself from family and friends. Each finished level (board, par, moves,
+lifts, outcome, and per-lift thinking and pouring times) goes to a Google Sheet through a small Apps Script web app
+in `collector/` (setup steps in `collector/README.md`). The game keeps rows in an outbox while offline and sends them
+in batches when it can (`src/app/game/playtest.ts`). Each phone has a random id; testers can add a name in Settings
+or arrive through a `?tester=Name` link. Settings says that play is shared. `npm run tuning:playtest -- plays.csv`
+reports each tester against the bots and the targets; `npm run playtest-check` tests the whole path in a browser.
 
 ## Milestone 7: tuning with bot runs (Nov 14, 2026)
 
@@ -185,6 +194,7 @@ npm test           # rules property tests, solver tests, and the full library re
 npm run gen        # regenerate the board library and gen/REPORT.md (about 10 min on 4 cores)
 npm run tuning:sample && npm run tuning   # re-tune par and the moves with bot runs (after a library change, sample first)
 npm run tuning:calibrate -- UNFILL1:...    # after a playtest: which bot plays like her, her seconds per lift
+npm run tuning:playtest -- plays.csv       # the playtest Sheet's Plays tab: every tester against the bots and targets
 npm run build      # type-check and build a static site into dist/ (the game and the lab)
 npm run build:single   # the game as one self-contained HTML file, dist-single/unfill.html
 npm run perf       # after a build and `npx vite preview --port 4173`: per-frame CPU time on a slowed CPU

@@ -96,6 +96,11 @@
               <button id="loadProgress" type="button" class="primary">Load this progress</button>
             </div>
           </div>
+          <div class="setting col" id="playtestRow">
+            <span>Playtest <small>to help Will tune the game, each level you finish (moves, par and timings) is sent to him automatically; add your name so he knows it’s you. Nothing else is sent.</small></span>
+            <input id="testerName" class="nameField" type="text" maxlength="40" placeholder="Your name (optional)" autocomplete="nickname" enterkeyhint="done" aria-label="Your name for the playtest" />
+            <small id="playtestStatus" class="ptStatus"></small>
+          </div>
           <div class="setting">
             <span>Show frame rate</span>
             <button id="setFps" type="button" role="switch" aria-checked="false" class="switch" aria-label="Show frame rate"></button>

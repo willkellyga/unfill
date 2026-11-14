@@ -9,13 +9,13 @@
  *   - where she sits within the typical bot on average (50% = exactly typical, lower = better than typical),
  *   - her real seconds per lift, to replace the 5 s estimate in src/core/pacing.ts,
  *   - her runs (levels reached), to compare with REPORT.md.
- * Then change TUNING or TARGETS and re-run `npm run tuning`.
+ * Then change TUNING or TARGETS and re-run `npm run tuning`. For the automatic playtest Sheet, use playtest.ts instead.
  */
 import { existsSync, readFileSync } from 'node:fs';
-import type { Keepsake, Library } from '../../src/core';
+import type { Keepsake } from '../../src/core';
 import { SECONDS_PER_BOARD } from '../../src/core';
-import { decodeExtras } from '../../src/core/tuning';
-import { BOTS, BOT_LABEL, quantile, type Bot } from './simulate';
+import { boardById, botMatch } from './match';
+import { BOT_LABEL, quantile } from './simulate';
 
 const arg = process.argv.slice(2).join('').trim();
 if (!arg) {
@@ -27,9 +27,6 @@ if (!code.startsWith('UNFILL1:')) throw new Error('Not a progress code (it shoul
 const data = JSON.parse(Buffer.from(code.slice(8), 'base64url').toString('utf8')) as { shelf: Keepsake[]; best: number };
 const shelf = (data.shelf ?? []).slice().sort((a, z) => a.at - z.at);
 
-const lib: Library = JSON.parse(readFileSync(new URL('../../src/library/boards.json', import.meta.url), 'utf8'));
-const byId = new Map(lib.boards.map((b) => [b.id, b]));
-const samples: { boards: Record<string, Record<string, string>> } = JSON.parse(readFileSync(new URL('./samples.json', import.meta.url), 'utf8'));
 
 // Runs: a level 1 after a later level starts a new run.
 const runs: number[] = [];
@@ -49,28 +46,13 @@ for (let i = 1; i < shelf.length; i++) {
 if (perLift.length) console.log(`Seconds per lift: median ${quantile(perLift, 0.5).toFixed(1)} over ${perLift.length} levels (estimate in pacing.ts: 5)`);
 
 // Which bot plays most like her.
-const known = shelf.filter((k) => k.id && byId.has(k.id) && samples.boards[k.id]);
+const known = shelf.filter((k) => k.id && boardById(k.id));
 console.log(`${known.length} levels have a board id to compare with the bots (levels cleared before milestone 7 don't).`);
-if (known.length) {
-  const loglik: Record<Bot, number> = Object.fromEntries(BOTS.map((b) => [b, 0])) as Record<Bot, number>;
-  const pct: number[] = [];
-  for (const k of known) {
-    const e = byId.get(k.id!)!;
-    const extra = k.lifts - e.par;
-    for (const b of BOTS) {
-      const games = decodeExtras(samples.boards[k.id!][b]);
-      // Smoothed chance of exactly her lifts: games within one move count half, so a careful bot isn't ruled out by one move.
-      const hits = games.filter((g) => g === extra).length + 0.5 * games.filter((g) => Math.abs(g - extra) === 1).length;
-      loglik[b] += Math.log((hits + 0.5) / (games.length + 1));
-    }
-    const typical = decodeExtras(samples.boards[k.id!].medium);
-    pct.push((100 * (typical.filter((g) => g < extra).length + 0.5 * typical.filter((g) => g === extra).length)) / typical.length);
-  }
-  const ranked = BOTS.slice().sort((a, z) => loglik[z] - loglik[a]);
+const m = botMatch(known.map((k) => ({ board: k.id!, lifts: k.lifts })));
+if (m) {
   console.log('\nHow likely her lifts are under each bot (higher is closer):');
-  for (const b of ranked) console.log(`  ${BOT_LABEL[b].padEnd(40)} ${(loglik[b] / known.length).toFixed(3)} per level`);
-  const avg = pct.reduce((a, x) => a + x, 0) / pct.length;
-  console.log(`\nShe plays closest to: ${BOT_LABEL[ranked[0]]}.`);
-  console.log(`Against the typical bot she sits at the ${avg.toFixed(0)}th percentile on average (50 = typical; lower = fewer moves).`);
-  if (known.length < 20) console.log('Fewer than 20 levels: treat this as a first look (skill estimates settle after 10–20 levels).');
+  for (const b of m.ranked) console.log(`  ${BOT_LABEL[b].padEnd(40)} ${m.perLevel[b].toFixed(3)} per level`);
+  console.log(`\nShe plays closest to: ${BOT_LABEL[m.ranked[0]]}.`);
+  console.log(`Against the typical bot she sits at the ${m.typicalPercentile.toFixed(0)}th percentile on average (50 = typical; lower = fewer moves).`);
+  if (m.levels < 20) console.log('Fewer than 20 levels: treat this as a first look (skill estimates settle after 10–20 levels).');
 }

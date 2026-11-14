@@ -844,6 +844,7 @@ html.reduced .switch::after {
   display: grid;
   gap: 8px;
 }
+.nameField,
 .paste textarea {
   width: 100%;
   box-sizing: border-box;
@@ -877,4 +878,11 @@ html.reduced .switch::after {
   overflow: hidden;
   opacity: 0;
   pointer-events: none;
+}
+
+.nameField {
+  font-family: inherit;
+}
+.ptStatus {
+  color: var(--muted);
 }
