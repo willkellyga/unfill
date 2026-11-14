@@ -27,6 +27,7 @@ import {
   patternFor,
   type PatternMode,
 } from './prefs';
+import { COLLECTOR_URL, DEVICE_KEY, Playtest, type Outcome } from './playtest';
 import { initPwa, installState } from './pwa';
 import { SLOW_FRAME_MS, TIERS, type Tier, type TierName } from './quality';
 import { BLOCK, BOTTLE_SCALE, Terrarium } from './scene';
@@ -153,6 +154,23 @@ const params = new URLSearchParams(location.search);
 const trayParam = Number(params.get('tray')) || 0;
 const ephemeral = trayParam > 0 || params.has('nosave');
 
+declare const __BUILD__: string;
+/**
+ * Playtest upload: each finished level goes to Will's Sheet (playtest.ts). Not from test links, and not from scripted
+ * browsers (the perf and loop checks) unless they name a collector with `?collector=`.
+ */
+const playtest = ephemeral
+  ? null
+  : new Playtest({
+      store,
+      url: params.get('collector') ?? (navigator.webdriver ? '' : COLLECTOR_URL),
+      app: __BUILD__,
+      online: () => navigator.onLine !== false,
+      later: (fn, ms) => window.setTimeout(fn, ms),
+    });
+// a link like ?tester=Mom names the tester on this phone
+if (playtest && params.get('tester')) playtest.name = params.get('tester')!;
+
 function loadJson(key: string): unknown {
   if (ephemeral) return null;
   try {
@@ -206,6 +224,8 @@ function showOver(): void {
 }
 
 function newRun(): void {
+  // leaving a level part way through for a new run (from Settings)
+  if (!S.over && !S.cleared) logLevelEnd('quit');
   $('over').hidden = true;
   overShown = false;
   bestAtRunStart = best;
@@ -220,6 +240,37 @@ function persist(): void {
 }
 function persistShelf(): void {
   if (!ephemeral) store.set(SHELF_KEY, JSON.stringify(S.shelf));
+}
+
+/** The level on screen ended (cleared, out of moves, or left for a new run): its row goes to the playtest outbox. */
+function logLevelEnd(outcome: Outcome, points?: number): void {
+  if (!playtest) return;
+  const e = S.pick.entry;
+  const st = installState();
+  playtest.levelEnded({
+    outcome,
+    run: S.seed,
+    n: S.n,
+    board: e.id,
+    role: S.pick.slot.role,
+    tier: e.tier,
+    cols: e.cols,
+    rows: e.rows,
+    colors: e.colors,
+    solverPar: e.par,
+    par: S.par,
+    grant: S.grant,
+    movesStart: S.pool.atBoardStart,
+    movesLeft: S.pool.moves,
+    lifts: S.lifts,
+    points,
+    score: S.score,
+    taps: S.taps.slice(),
+    mirror: S.pick.transform.mirror,
+    perm: S.pick.transform.perm.slice(),
+    installed: st.standalone,
+    ios: st.ios,
+  });
 }
 
 /** Show the session's current board: the tray, the bottle with the layers poured so far, the HUD. */
@@ -243,6 +294,7 @@ function showBoard(): void {
   updateHud();
   readyAt = performance.now();
   persist();
+  if (!S.over) playtest?.levelStarted(S.seed, S.n, S.pick.entry.id, S.pool.atBoardStart);
 }
 
 /**
@@ -431,6 +483,8 @@ function doLift(cell: number): void {
 }
 
 function afterLift(out: { keepsake?: Keepsake | null }): void {
+  if (out.keepsake) logLevelEnd('clear', out.keepsake.points);
+  else if (S.over) logLevelEnd('out');
   if (out.keepsake) {
     persistShelf();
     if (S.score > best) {
@@ -1103,6 +1157,7 @@ function syncSettings(): void {
   }
   renderPatKey();
   syncInstall();
+  syncPlaytest();
   const s = timingSummary();
   $('timingText').textContent = s
     ? `${s.taps} taps logged: ${s.think.toFixed(1)} s thinking + ${s.anim.toFixed(1)} s pouring per tap on average.`
@@ -1209,10 +1264,38 @@ function syncInstall(): void {
   }
 }
 
+// ---------------------------------------------------------------- playtest: name and what's been sent
+
+function syncPlaytest(): void {
+  const row = $('playtestRow');
+  row.hidden = !playtest;
+  if (!playtest) return;
+  const input = $<HTMLInputElement>('testerName');
+  if (document.activeElement !== input) input.value = playtest.name;
+  const waiting = playtest.outbox().length;
+  const sent = playtest.sentCount();
+  $('playtestStatus').textContent = !playtest.enabled
+    ? `${waiting} ${waiting === 1 ? 'level' : 'levels'} saved to send once Will's collector is set up.`
+    : waiting
+      ? `${sent} sent, ${waiting} waiting to send${navigator.onLine === false ? ' when you’re back online' : ''}.`
+      : `${sent} sent, all up to date.`;
+}
+$<HTMLInputElement>('testerName').addEventListener('change', (e) => {
+  if (!playtest) return;
+  playtest.name = (e.target as HTMLInputElement).value;
+  syncPlaytest();
+});
+
 // ---------------------------------------------------------------- moving her progress (Safari ⇄ home-screen app)
 
 $('copyProgress').onclick = async () => {
-  const code = encodeProgress({ save: S.toSave(), shelf: S.shelf, best: Math.max(best, S.score) });
+  const code = encodeProgress({
+    save: S.toSave(),
+    shelf: S.shelf,
+    best: Math.max(best, S.score),
+    device: playtest?.device,
+    name: playtest?.name || undefined,
+  });
   try {
     await navigator.clipboard.writeText(code);
     toast('Progress code copied');
@@ -1257,6 +1340,9 @@ $('loadProgress').onclick = () => {
   store.set(SAVE_KEY, JSON.stringify(p.save));
   store.set(SHELF_KEY, JSON.stringify(shelf));
   store.set(BEST_KEY, String(Math.max(best, p.best)));
+  // the same player on both sides: keep one playtest id (and their name) for Safari and the home-screen app
+  if (p.device) store.set(DEVICE_KEY, p.device);
+  if (playtest && p.name && !playtest.name) playtest.name = p.name;
   location.reload();
 };
 
@@ -1345,8 +1431,9 @@ function loadTimings(): TimingRow[] {
 function logTap(): void {
   const at = performance.now();
   const think = Math.round(at - readyAt);
+  playtest?.tapped(think);
   // a long pause (the phone put down) isn't thinking time
-  pendingTap = think > 60000 ? null : { n: S.n, c: S.cur.board.cols, r: S.cur.board.rows, think, anim: 0, at };
+  pendingTap = { n: S.n, c: S.cur.board.cols, r: S.cur.board.rows, think, anim: 0, at };
 }
 
 /** The tray is playable again: the pour time is known, so the tap's row is saved. */
@@ -1356,6 +1443,8 @@ function markReady(): void {
   const { at, ...row } = pendingTap;
   row.anim = Math.round(readyAt - at);
   pendingTap = null;
+  playtest?.poured(row.anim);
+  if (row.think > 60000) return;
   const rows = loadTimings();
   rows.push(row);
   store.set(TIMING_KEY, JSON.stringify(rows.slice(-1000)));
@@ -1388,11 +1477,21 @@ $('startBtn').onclick = () => {
   $('intro').hidden = true;
   if (tierChoice === 'auto') tierCheck = { until: performance.now() + 2000, sum: 0, count: 0 };
   levelBanner(null);
+  // time spent on the intro card isn't thinking time
+  readyAt = performance.now();
+  const st = installState();
+  playtest?.opened({ run: S.seed, n: S.n, installed: st.standalone, ios: st.ios, screen: `${screen.width}x${screen.height}` });
 };
 initPwa(() => syncInstall(), toast);
 
 // her progress is saved after every move; this catches anything in flight when the page goes away
 window.addEventListener('pagehide', persist);
+// playtest rows waiting from an earlier offline session go now, when the connection comes back, and as the app closes
+void playtest?.flush();
+window.addEventListener('online', () => void playtest?.flush());
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') void playtest?.flush();
+});
 
 window.addEventListener('resize', layout);
 window.visualViewport?.addEventListener('resize', layout);

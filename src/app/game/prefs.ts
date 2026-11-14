@@ -59,6 +59,9 @@ export interface Progress {
   save: unknown;
   shelf: unknown[];
   best: number;
+  /** The playtest id and tester name (playtest.ts), so Safari and the home-screen app count as one player. */
+  device?: string;
+  name?: string;
 }
 
 const PREFIX = 'UNFILL1:';
@@ -78,7 +81,7 @@ function fromBase64Url(s: string): string {
 }
 
 export function encodeProgress(p: Progress): string {
-  return PREFIX + toBase64Url(JSON.stringify({ v: 1, save: p.save, shelf: p.shelf, best: p.best }));
+  return PREFIX + toBase64Url(JSON.stringify({ v: 1, save: p.save, shelf: p.shelf, best: p.best, device: p.device, name: p.name }));
 }
 
 /** The progress in a code, or null if it isn't one. Whitespace (from a message or a note) is ignored. */
@@ -90,7 +93,9 @@ export function decodeProgress(code: string): Progress | null {
     if (!d || d.v !== 1 || !Array.isArray(d.shelf)) return null;
     const best = Number(d.best);
     if (!Number.isFinite(best) || best < 0) return null;
-    return { save: d.save ?? null, shelf: d.shelf, best: Math.floor(best) };
+    const device = typeof d.device === 'string' && /^[a-z0-9]{6,32}$/.test(d.device) ? d.device : undefined;
+    const name = typeof d.name === 'string' ? d.name.slice(0, 40) : undefined;
+    return { save: d.save ?? null, shelf: d.shelf, best: Math.floor(best), device, name };
   } catch {
     return null;
   }

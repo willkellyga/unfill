@@ -56,7 +56,8 @@ function pwa(): Plugin {
 export default defineConfig({
   base: './',
   // the single-file artifact runs inside claude.ai's frame, where a service worker can't run
-  define: { __PWA__: JSON.stringify(!artifact) },
+  // __BUILD__: the commit that built it (GitHub Actions sets GITHUB_SHA), sent with playtest rows
+  define: { __PWA__: JSON.stringify(!artifact), __BUILD__: JSON.stringify((process.env.GITHUB_SHA || 'local').slice(0, 7)) },
   plugins: artifact ? [] : [pwa()],
   publicDir: artifact ? false : 'public',
   build: artifact

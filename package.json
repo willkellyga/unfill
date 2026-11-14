@@ -18,9 +18,11 @@
     "perf": "node scripts/perf.cjs",
     "loop-check": "node scripts/loop-check.cjs",
     "offline-check": "node scripts/offline-check.cjs",
+    "playtest-check": "node scripts/playtest-check.cjs",
     "tuning:sample": "tsx gen/tuning/sample.ts",
     "tuning": "tsx gen/tuning/tune.ts",
-    "tuning:calibrate": "tsx gen/tuning/calibrate.ts"
+    "tuning:calibrate": "tsx gen/tuning/calibrate.ts",
+    "tuning:playtest": "tsx gen/tuning/playtest.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
