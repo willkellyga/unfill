@@ -2,7 +2,29 @@
 
 A cozy, phone-first web puzzle. This repository has milestone 1 (the rules lab: a flat 2D test board on the shared
 rules core), milestone 2 (the board library: generator, solver, difficulty rating and progression), milestone 3
-(the move economy), milestone 4 (the 3D terrarium slice), milestone 5 (the full game loop) and milestone 6 (polish: settings, color patterns, reduced motion, home-screen app).
+(the move economy), milestone 4 (the 3D terrarium slice), milestone 5 (the full game loop), milestone 6 (polish: settings, color patterns, reduced motion, home-screen app)
+and milestone 7 (tuning par and the moves with bot runs).
+
+## Milestone 7: tuning with bot runs (Nov 14, 2026)
+
+Details, research and the playtest plan: [gen/tuning/README.md](gen/tuning/README.md). Results:
+[gen/tuning/REPORT.md](gen/tuning/REPORT.md).
+
+- **Par comes from the bots.** `src/library/par-curves.json` holds, for every board, how many extra moves over the
+  solver's best a typical bot takes (128 games, as quantiles). Par on level n = solver par + the extra moves a
+  typical player stays within q% of the time, where q falls as the run goes on (about 70% at level 5, 15% by level
+  11, 5% by level 51), 20 points lower on peaks and 20 higher on breathers. Par is always at least solver par + 1,
+  so it can always be beaten. This replaces the old rule (easier par on levels 1–20, solver par after).
+- **Moves back.** Each level pours in its par − 1 on builds and peaks (so making par exactly spends a banked move)
+  and par + 3 on breathers. A level always gives back enough moves to beat its par. Bank cap 15, welcome gift 5.
+- **Bot runs.** `gen/tuning/` records about 730,000 bot games on the 2,400 boards, then plays whole runs (no undo,
+  run ends when moves run out) for four bot players. Two searches tried 5,376 settings with 1,000 runs per bot each,
+  about 21 million runs; the winner was checked on 5,000 fresh runs per bot. Typical run: median 14.6 minutes
+  (Will's target 12–15), casual 8, sharp 36. Runs end on the bank running dry, usually 1–3 moves short.
+- **All knobs** are in `TUNING` (`src/core/tuning.ts`); the targets are in `gen/tuning/targets.ts`.
+  `npm run tuning` re-searches; `npm run tuning:calibrate -- <progress code>` lines a real player up against the
+  bots after a playtest. Cleared levels now keep their board id on the shelf for this.
+- The milestone 3 economy (`gen/economy/`, `SLACK`) is no longer used by the game; it's kept for its report.
 
 ## Milestone 6: polish for her phone (Nov 14, 2026)
 
@@ -161,7 +183,8 @@ npm install
 npm run dev        # opens on http://localhost:5173
 npm test           # rules property tests, solver tests, and the full library replay (about 30 s)
 npm run gen        # regenerate the board library and gen/REPORT.md (about 10 min on 4 cores)
-npm run economy:sample && npm run economy:tune   # re-tune the move economy after a library change
+npm run tuning:sample && npm run tuning   # re-tune par and the moves with bot runs (after a library change, sample first)
+npm run tuning:calibrate -- UNFILL1:...    # after a playtest: which bot plays like her, her seconds per lift
 npm run build      # type-check and build a static site into dist/ (the game and the lab)
 npm run build:single   # the game as one self-contained HTML file, dist-single/unfill.html
 npm run perf       # after a build and `npx vite preview --port 4173`: per-frame CPU time on a slowed CPU
@@ -199,10 +222,11 @@ The 2D lab is at `lab.html` (for example http://localhost:5173/lab.html).
   - `library.ts`: library entry types, mirror and recolor transforms, duplicate detection.
   - `progression.ts`: which board comes next (tiers by board number, the sawtooth, seeded picking).
   - `economy.ts`: the move pool: grants, slack schedule, carry-over and bank cap, undo and restart.
+  - `tuning.ts`: milestone 7's knobs: par from the bots' par curves, the moves each level pours in.
   - `pacing.ts`: play-time estimates and the 12-minute session target.
   - `session.ts`: the game loop's state: the board and its history, the pool, points, level changes, keepsake
     bottles, the save format and resume.
-- `src/library/boards.json`: the board library.
+- `src/library/boards.json`: the board library. `src/library/par-curves.json`: each board's typical-player curve.
 - `gen/`: the Node command that writes the library, and the difficulty study.
 - `src/app/game/`: the 3D game (Three.js).
   - `main.ts`: game state, input (tap, hold to preview), the lift's flight to the bottle, HUD, settings, timing log.
@@ -219,6 +243,7 @@ The 2D lab is at `lab.html` (for example http://localhost:5173/lab.html).
 - `tests/progression.test.ts`: the progression schedule and sawtooth.
 - `tests/economy.test.ts`: the move economy and the simulated-session targets.
 - `tests/session.test.ts`: the game loop, points, save and resume.
+- `tests/tuning.test.ts`: par is always beatable, every level gives back enough to beat par, par tightens with the level.
 
 ## The repose rule, exactly
 

@@ -65,7 +65,7 @@ export interface MovePool {
 }
 
 /** First board: its grant plus the welcome gift. */
-export function startPool(firstGrant: number, s: SlackSchedule = SLACK): MovePool {
+export function startPool(firstGrant: number, s: Pick<SlackSchedule, 'welcomeGift'> = SLACK): MovePool {
   const moves = firstGrant + s.welcomeGift;
   return { moves, atBoardStart: moves };
 }
@@ -74,7 +74,7 @@ export function startPool(firstGrant: number, s: SlackSchedule = SLACK): MovePoo
  * After clearing a board: leftover moves carry over (up to the bank cap), and the next board's grant pours in.
  * `overflow` is the leftover above the cap, for the app to turn into stars or bottle decorations.
  */
-export function nextBoardPool(pool: MovePool, nextGrant: number, s: SlackSchedule = SLACK): MovePool & { overflow: number } {
+export function nextBoardPool(pool: MovePool, nextGrant: number, s: Pick<SlackSchedule, 'bankCap'> = SLACK): MovePool & { overflow: number } {
   const kept = s.bankCap === null ? pool.moves : Math.min(pool.moves, s.bankCap);
   const moves = kept + nextGrant;
   return { moves, atBoardStart: moves, overflow: pool.moves - kept };

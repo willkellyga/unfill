@@ -8,9 +8,11 @@ import {
   groupAt,
   type Board,
   type Keepsake,
+  attachParCurves,
   type Library,
 } from '../../core';
 import libraryText from '../../library/boards.json?raw';
+import curvesText from '../../library/par-curves.json?raw';
 import { Audio } from './audio';
 import { Blocks } from './blocks';
 import { Bottle } from './bottle';
@@ -33,6 +35,8 @@ import { renderShelf } from './shelf';
 // ---------------------------------------------------------------- setup
 
 const library: Library = JSON.parse(libraryText);
+/** Boards with each one's typical-player par curve (milestone 7: par is set from bot runs). */
+const boards = attachParCurves(library.boards, JSON.parse(curvesText));
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -165,11 +169,11 @@ function loadShelf(): Keepsake[] {
 
 const newSeed = () => 1 + Math.floor(Math.random() * 1e9);
 const shelfAtLoad = loadShelf();
-let S: Session = Session.restore(library.boards, loadJson(SAVE_KEY), shelfAtLoad) as Session;
+let S: Session = Session.restore(boards, loadJson(SAVE_KEY), shelfAtLoad) as Session;
 /** Was there a game in progress to come back to? */
 const resumed = !!S;
 if (!S) {
-  S = new Session(library.boards, newSeed(), shelfAtLoad);
+  S = new Session(boards, newSeed(), shelfAtLoad);
   S.begin(trayParam || 1, true);
 } else if (S.cleared) {
   // closed during the clear: the bottle is already on the shelf, so carry on to the next level
@@ -206,7 +210,7 @@ function newRun(): void {
   overShown = false;
   bestAtRunStart = best;
   newBestShown = false;
-  S = new Session(library.boards, newSeed(), S.shelf);
+  S = new Session(boards, newSeed(), S.shelf);
   shownScore = 0;
   startBoard(1, true);
 }
@@ -1230,7 +1234,7 @@ let loadArmed = 0;
 $('loadProgress').onclick = () => {
   const p = decodeProgress($<HTMLTextAreaElement>('pasteCode').value);
   const shelf = p ? (p.shelf as Keepsake[]).filter((k) => k && Array.isArray(k.layers) && Number.isInteger(k.n)) : [];
-  const restored = p && p.save ? Session.restore(library.boards, p.save, shelf) : null;
+  const restored = p && p.save ? Session.restore(boards, p.save, shelf) : null;
   if (!p || (p.save && !restored)) {
     toast('That code didn’t work. Copy it again and paste the whole thing.');
     return;
