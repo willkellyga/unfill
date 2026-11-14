@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { BOTTLE_H } from './bottle';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { backdropTexture, causticTexture, glareTexture, softShadowTexture, woodTexture } from './textures';
@@ -19,11 +20,13 @@ const PLINTH_H = 0.45;
 const RAIL_H = 0.28;
 const GLASS_T = 0.06;
 const INNER_DEPTH = 1.0;
-/** Camera angle above the tray. The plan sketches 30°; an upright tray reads and taps better a little flatter. */
-const PITCH_DEG = 21;
-/** A small turn to the right, so the blocks and the glass show their depth. */
-const YAW_DEG = 9;
 const FOV = 26;
+/**
+ * Bottle top (Will's pick): the camera faces the tray nearly head-on so it fills the screen's width, the table is
+ * cropped away, and the bottle stands centered on the top rail between the level and moves chips.
+ */
+const PITCH_DEG = 7;
+export const BOTTLE_SCALE = 0.72;
 
 export interface Insets {
   top: number;
@@ -168,9 +171,10 @@ export class Terrarium {
     return this.rows + HEADROOM + RAIL_H;
   }
 
+
   /** Where the bottle stands (its base center). */
   get bottleSpot(): THREE.Vector3 {
-    return new THREE.Vector3(this.cols / 2 - 0.8, this.railTop, 0);
+    return new THREE.Vector3(0, this.railTop, 0);
   }
 
   /** Build the tray for a board size. */
@@ -342,13 +346,13 @@ export class Terrarium {
 
     const regionW = Math.max(100, W - 2 * insets.side);
     const regionH = Math.max(100, H - insets.top - insets.bottom);
-    const xs = this.cols / 2 + 0.4;
-    const top = this.railTop + 3.1; // bottle and cork, and the top of a lifted group's arc
-    const box = new THREE.Box3(new THREE.Vector3(-xs, -PLINTH_H, -0.8), new THREE.Vector3(xs, top, 0.8));
+    // the glass edge to edge, and the bottle with its cork on top; the plinth and table are cropped away
+    const xs = this.cols / 2 + 0.12;
+    const top = this.railTop + BOTTLE_SCALE * BOTTLE_H;
+    const box = new THREE.Box3(new THREE.Vector3(-xs, -0.12, -0.55), new THREE.Vector3(xs, top, 0.55));
     const center = box.getCenter(new THREE.Vector3());
     const pitch = (PITCH_DEG * Math.PI) / 180;
-    const yaw = (YAW_DEG * Math.PI) / 180;
-    const dir = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
+    const dir = new THREE.Vector3(0, Math.sin(pitch), Math.cos(pitch));
     const corners: THREE.Vector3[] = [];
     for (const x of [box.min.x, box.max.x])
       for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) corners.push(new THREE.Vector3(x, y, z));

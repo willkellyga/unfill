@@ -349,6 +349,153 @@ button.primary {
   font-size: 1.05rem;
 }
 
+/* ---- icons in the buttons (shown by the compact layouts) ---- */
+button svg {
+  display: none;
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+#gear {
+  display: none;
+}
+.title b {
+  font-weight: inherit;
+}
+
+/* ================================================================ Bottle top (Will's pick)
+   The bottle stands centered on top of the tray, with the level and moves chips either side of it; round icon
+   buttons spread along the bottom, and the gear opens the settings panel. These rules refine the base above. */
+body .title h1,
+body .size,
+body .more summary {
+  display: none;
+}
+body #gear {
+  display: inline-flex;
+}
+body button svg {
+  display: block;
+}
+body .controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+/* the help line only appears when it has something to say, floating above the buttons */
+body .how {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 32px);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 14px;
+  min-height: 0;
+}
+body .how:not(.active) {
+  display: none;
+}
+body .more {
+  position: static;
+  width: 100%;
+}
+body .more:not([open]) {
+  display: none;
+}
+body .morePanel {
+  left: max(12px, env(safe-area-inset-left, 0px));
+  right: max(12px, env(safe-area-inset-right, 0px));
+  bottom: calc(100% + 8px);
+  margin: 0 auto;
+  max-width: 460px;
+}
+body .foot {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+}
+
+/* chips: level on the left, moves on the right */
+body .hud {
+  align-items: center;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
+}
+body #levelLabel,
+body .count {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: 0 6px 16px -10px rgba(90, 63, 51, 0.6);
+}
+body #levelLabel {
+  display: inline-block;
+  padding: 8px 14px;
+  font: 700 0.92rem var(--body);
+  color: var(--muted);
+}
+body .title b {
+  color: var(--ink);
+  font: 600 1.05rem var(--display);
+}
+body .count {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 5px 14px 6px;
+}
+body .count strong {
+  font-size: 1.45rem;
+}
+body .count .muted {
+  display: none;
+}
+body .controls button {
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  box-shadow: 0 8px 18px -12px rgba(90, 63, 51, 0.7);
+}
+body .controls .lbl {
+  display: none;
+}
+
+/* hero: the two chips stack into the corners beside the bottle */
+body .hud {
+  align-items: flex-start;
+}
+body .count {
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  border-radius: 20px;
+  padding: 6px 16px 7px;
+}
+body .count strong {
+  font-size: 1.9rem;
+}
+body #levelLabel {
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 14px;
+}
+body .title .meta {
+  font-size: 0.82rem;
+}
+body .controls {
+  width: 100%;
+  justify-content: space-between;
+  padding: 0 6px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .morePanel,
   .foot.nudge #undo,

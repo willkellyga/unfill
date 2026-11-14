@@ -28,7 +28,7 @@ import { Grains } from './grains';
 import { SAND, sandColor, SAND_PITCH } from './palette';
 import { FIRM, fallTime, planPour, type PourPlan } from './pour';
 import { SLOW_FRAME_MS, TIERS, type Tier, type TierName } from './quality';
-import { BLOCK, Terrarium } from './scene';
+import { BLOCK, BOTTLE_SCALE, Terrarium } from './scene';
 
 // ---------------------------------------------------------------- setup
 
@@ -74,6 +74,7 @@ const blocks = new Blocks(T, T.blockGeometry());
 blocks.setShadows(tier.shadows);
 T.scene.add(blocks.mesh, blocks.bridges, blocks.ghostMesh);
 const bottle = new Bottle();
+bottle.setScale(BOTTLE_SCALE);
 T.scene.add(bottle.group);
 const audio = new Audio(store.get('unfill-muted') === '1', store.get('unfill-ambient') !== '0');
 
@@ -859,7 +860,8 @@ document.addEventListener('keydown', (e) => {
 function updateHud(): void {
   if (!$('moves').classList.contains('pour')) $('moves').textContent = String(pool.moves);
   $('movesLabel').textContent = pool.moves === 1 ? 'move' : 'moves';
-  $('levelLabel').textContent = `Level ${n} · par ${pick.entry.par} · ${pick.entry.cols}×${pick.entry.rows}`;
+  $('levelLabel').innerHTML =
+    `<b>Level ${n}</b><span class="meta">par ${pick.entry.par}</span>`;
   const left = countBlocks(cur.board);
   $('left').textContent = `${left} ${left === 1 ? 'block' : 'blocks'} left`;
   $('hud').classList.toggle('empty', pool.moves === 0 && !cleared);
@@ -894,10 +896,12 @@ function nudgeButtons(): void {
 }
 
 function layout(): void {
-  const top = $('hud').getBoundingClientRect();
+  const hud = $('hud').getBoundingClientRect();
   const bar = $('bar').getBoundingClientRect();
   const H = window.innerHeight;
-  T.frame({ top: Math.max(8, top.bottom + 4), bottom: H - bar.top + 6, side: 10 });
+  // the bottle sits centered on top and the header's chips sit either side of it, so the scene can use their height
+  const top = hud.top + parseFloat(getComputedStyle($('hud')).paddingTop);
+  T.frame({ top: Math.max(8, top), bottom: H - bar.top + 6, side: 4 });
   const vp = T.viewport;
   grains.setScale(vp.h * T.renderer.getPixelRatio(), T.fov);
 }
@@ -925,7 +929,12 @@ function syncSettings(): void {
 const more = $<HTMLDetailsElement>('more');
 more.addEventListener('toggle', () => {
   if (more.open) syncSettings();
+  $('gear').setAttribute('aria-expanded', String(more.open));
 });
+// the compact layouts open the settings from a gear button instead of the summary row
+$('gear').onclick = () => {
+  more.open = !more.open;
+};
 // tapping the tray closes the settings panel
 canvas.addEventListener('pointerdown', () => {
   more.open = false;

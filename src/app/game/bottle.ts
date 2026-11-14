@@ -17,6 +17,8 @@ const MOUTH_Y = 3.1;
 const SEGS = 40;
 /** The bottle is modelled at about a 1.6-block width and shown a little smaller. */
 const SCALE = 0.84;
+/** Bottle height above the rail at scale 1, cork included. */
+export const BOTTLE_H = 3.3;
 const CORK_H = 0.42;
 const CORK_SEAT = MOUTH_Y + 0.14 - CORK_H / 2; // cork center when pressed in
 
@@ -47,6 +49,8 @@ export class Bottle {
   /** Where the bottle stands on the rail; enter/exit animate around it. */
   readonly home = new THREE.Vector3();
   private enterT0 = -Infinity;
+  /** Overall size; layouts that give the tray more room use a smaller bottle. */
+  scale = SCALE;
   /** Current enter/exit displacement from home. */
   readonly offset = new THREE.Vector2();
   private exitT0 = Infinity;
@@ -85,7 +89,7 @@ export class Bottle {
     this.cork.visible = false;
 
     this.group.add(glassBack, this.layersGroup, this.cork, glassFront);
-    this.group.scale.setScalar(SCALE);
+    this.group.scale.setScalar(this.scale);
   }
 
   /** The bottle mouth in world space. */
@@ -245,6 +249,12 @@ export class Bottle {
     }
   }
 
+  setScale(s: number): void {
+    this.scale = s;
+    this.group.scale.setScalar(s);
+    this.group.updateMatrixWorld(true);
+  }
+
   /** A fresh empty bottle drops onto the rail at t0. */
   enterAt(t0: number): void {
     this.enterT0 = t0;
@@ -284,7 +294,7 @@ export class Bottle {
     this.corkT0 = Infinity;
     this.bobT0 = Infinity;
     this.cork.visible = false;
-    this.group.scale.setScalar(SCALE);
+    this.group.scale.setScalar(this.scale);
     this.group.rotation.z = 0;
   }
 
@@ -334,10 +344,10 @@ export class Bottle {
     const bt = now - this.bobT0;
     if (bt >= 0 && bt < 0.9) {
       const k = Math.sin(bt * Math.PI * 4) * Math.exp(-bt * 4.5);
-      this.group.scale.set(SCALE * (1 - 0.03 * k), SCALE * (1 + 0.05 * k), SCALE * (1 - 0.03 * k));
+      this.group.scale.set(this.scale * (1 - 0.03 * k), this.scale * (1 + 0.05 * k), this.scale * (1 - 0.03 * k));
       this.group.rotation.z = 0.035 * Math.sin(bt * Math.PI * 3) * Math.exp(-bt * 3);
     } else if (bt >= 0.9) {
-      this.group.scale.setScalar(SCALE);
+      this.group.scale.setScalar(this.scale);
       this.group.rotation.z = 0;
     }
   }
