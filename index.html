@@ -3,8 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#F6E6D6" />
-    <title>Unfill rules lab</title>
+    <meta name="theme-color" content="#f6e2cd" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>Unfill</title>
+    <meta name="claude:viewport-fit-sides" content="cover" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -13,66 +15,107 @@
     />
   </head>
   <body>
-    <main class="app">
-      <header class="top">
-        <div class="title">
-          <h1>Unfill</h1>
-          <span id="boardLabel">Rules lab</span>
-        </div>
-        <div class="count" aria-live="polite">
-          <strong id="lifts">0</strong>
-          <small id="liftsLabel">lifts</small>
-          <small id="left" class="muted">0 blocks left</small>
-        </div>
-      </header>
+    <canvas id="scene" aria-label="A glass tray of colored sand blocks. Tap a block to lift its group."></canvas>
 
-      <div class="rule" role="group" aria-label="Sand rule">
-        <button id="ruleRepose" class="seg" aria-pressed="true">Slopes</button>
-        <button id="ruleColumn" class="seg" aria-pressed="false">Columns</button>
+    <header class="hud" id="hud">
+      <div class="moves" aria-live="polite">
+        <svg class="timer" viewBox="0 0 24 32" aria-hidden="true">
+          <path d="M4 2h16M4 30h16" />
+          <path d="M6 2c0 8 6 10 6 14s-6 6-6 14M18 2c0 8-6 10-6 14s6 6 6 14" />
+          <path class="sand" d="M8.5 27.5c1-2.6 2.4-3.9 3.5-4.4 1.1.5 2.5 1.8 3.5 4.4z" />
+        </svg>
+        <strong id="moves">0</strong>
+        <span id="movesLabel">moves</span>
       </div>
-      <p class="ruleHelp" id="ruleHelp"></p>
+      <div class="tray"><span id="trayLabel">Tray 1</span> <span class="dot">·</span> <span id="parLabel"></span></div>
+    </header>
 
-      <div class="stage" id="stage">
-        <canvas id="board" aria-label="Unfill test board"></canvas>
-        <div class="overlay" id="overlay" hidden>
-          <div class="card">
-            <h2 id="ovTitle">Tray emptied</h2>
-            <p id="ovText"></p>
-            <div class="row" id="ovButtons"></div>
+    <p class="hint" id="hint" role="status"></p>
+    <div class="toast" id="toast" role="status"></div>
+    <output class="fps" id="fps" hidden></output>
+
+    <nav class="bar" id="bar" aria-label="Tray controls">
+      <button id="undo" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7 4 12l5 5" /><path d="M4 12h10a6 6 0 0 1 0 12h-2" transform="translate(0 -6)" /></svg>
+        Undo
+      </button>
+      <button id="restart" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6" /><path d="M4 4v5h5" /></svg>
+        Restart
+      </button>
+      <button id="settingsBtn" type="button" aria-label="Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" /></svg>
+        Settings
+      </button>
+    </nav>
+
+    <section class="card" id="card" hidden aria-live="polite">
+      <div class="cardInner">
+        <p class="stars" id="cardStars"></p>
+        <h2 id="cardTitle">Tray emptied</h2>
+        <p id="cardText"></p>
+        <div class="row">
+          <button id="cardReplay" type="button">Replay</button>
+          <button id="cardNext" type="button" class="primary">Next tray</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="sheet" id="sheet" hidden>
+      <div class="sheetInner" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+        <div class="sheetHead">
+          <h2 id="sheetTitle">Settings</h2>
+          <button id="sheetClose" type="button" class="ghost">Done</button>
+        </div>
+        <div class="setting">
+          <span>Sound</span>
+          <button id="setSound" type="button" role="switch" aria-checked="true" class="switch" aria-label="Sound"></button>
+        </div>
+        <div class="setting">
+          <span>Room sounds <small>quiet room tone and a distant bird</small></span>
+          <button id="setAmbient" type="button" role="switch" aria-checked="true" class="switch" aria-label="Room sounds"></button>
+        </div>
+        <div class="setting col">
+          <span>Quality</span>
+          <div class="segs" role="group" aria-label="Quality">
+            <button type="button" data-tier="auto">Auto</button>
+            <button type="button" data-tier="low">Low</button>
+            <button type="button" data-tier="medium">Medium</button>
+            <button type="button" data-tier="high">High</button>
+          </div>
+          <small id="tierNote"></small>
+        </div>
+        <div class="setting">
+          <span>Show frame rate</span>
+          <button id="setFps" type="button" role="switch" aria-checked="false" class="switch" aria-label="Show frame rate"></button>
+        </div>
+        <div class="setting col">
+          <span>Try a tray size <small>starts a fresh move pool</small></span>
+          <div class="segs wrap">
+            <button type="button" data-tray="1">5×6</button>
+            <button type="button" data-tray="4">6×7</button>
+            <button type="button" data-tray="11">7×8</button>
+            <button type="button" data-tray="21">8×9</button>
+            <button type="button" data-tray="45">8×10</button>
+            <button type="button" data-tray="71">8×10, 5 colors</button>
           </div>
         </div>
-        <div class="toast" id="toast" role="status"></div>
-      </div>
-
-      <p class="how" id="how">Tap a block to lift its group. Hold to preview.</p>
-
-      <div class="controls">
-        <button id="undo">Undo</button>
-        <button id="restart">Restart</button>
-        <button id="newBoard" class="primary">New board</button>
-      </div>
-      <details class="results" id="results">
-        <summary>Board size, sound and rule comparison</summary>
-        <div class="controls small">
-          <label class="select"
-            >Size
-            <select id="size"></select>
-          </label>
-          <button id="sound" aria-pressed="true">Sound on</button>
+        <div class="setting col">
+          <span>Tap timings <small id="timingText"></small></span>
+          <button id="copyTimings" type="button">Copy tap timings</button>
         </div>
-        <p class="muted" id="thisBoard"></p>
-        <table>
-          <thead>
-            <tr><th>Board</th><th>Slopes</th><th>Columns</th></tr>
-          </thead>
-          <tbody id="resultsBody"></tbody>
-        </table>
-        <div class="row">
-          <button id="copyResults">Copy results</button>
-          <button id="clearResults">Clear</button>
-        </div>
-      </details>
-    </main>
-    <script type="module" src="/src/app/main.ts"></script>
+      </div>
+    </div>
+
+    <div class="intro" id="intro">
+      <div class="introInner">
+        <h1>Unfill</h1>
+        <p>Tap a block to lift its color out of the tray. The sand above pours down. Empty the tray to fill the bottle.</p>
+        <p class="small">Hold a block to preview where the sand lands.</p>
+        <button id="startBtn" type="button" class="primary">Begin</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/app/game/main.ts"></script>
   </body>
 </html>

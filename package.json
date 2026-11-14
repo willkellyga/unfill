@@ -2,7 +2,7 @@
   "name": "unfill",
   "private": true,
   "version": "0.1.0",
-  "description": "Unfill rules lab (milestone 1): shared rules core and a flat 2D test board.",
+  "description": "Unfill: a cozy 3D sand puzzle. Milestones 1-4: rules lab, board library, move economy, 3D terrarium slice.",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
@@ -13,14 +13,20 @@
     "typecheck": "tsc --noEmit",
     "gen": "tsx gen/cli.ts",
     "economy:sample": "tsx gen/economy/sample.ts",
-    "economy:tune": "tsx gen/economy/tune.ts"
+    "economy:tune": "tsx gen/economy/tune.ts",
+    "build:single": "ARTIFACT=1 vite build && node scripts/single-file.mjs",
+    "perf": "node scripts/perf.cjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "@types/three": "^0.186.0",
     "fast-check": "^4.10.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
     "vitest": "^5.1.0"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
   }
 }

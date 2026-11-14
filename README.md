@@ -1,8 +1,49 @@
 # Unfill
 
 A cozy, phone-first web puzzle. This repository has milestone 1 (the rules lab: a flat 2D test board on the shared
-rules core), milestone 2 (the board library: generator, solver, difficulty rating and progression) and milestone 3
-(the move economy).
+rules core), milestone 2 (the board library: generator, solver, difficulty rating and progression), milestone 3
+(the move economy) and milestone 4 (the 3D terrarium slice).
+
+## Milestone 4: 3D terrarium slice (Nov 14, 2026)
+
+`index.html` is now the game in Three.js: a glass sand frame on a sunny wooden table, with the keepsake bottle on its
+top rail. The 2D rules lab moved to `lab.html`.
+
+- **The lift.** The tapped group squishes, floats out of the glass, arcs over to the bottle, and melts into it as a
+  ribbon of grains. The bottle gains a layer of that color, sized by the blocks lifted, so it is exactly full when
+  the tray is empty. Layer tops wander a little, like hand-poured sand art.
+- **The pour.** Column gravity, shown as an hourglass: in each column the sand that has to fall crumbles from the
+  bottom up, streams down as grains, and the landing cell fills from the bottom and firms with a small squash.
+  0.5 to 1.2 s, like the plan. Grains run on the GPU (one launch per pour, nothing per frame). A tap during a pour
+  fast-forwards it.
+- **The clear.** The last layer settles, a cork drops in and twists down with a squeak and a pop, the bottle bobs,
+  and a chime plays. The card shows stars (3 at par or better, 2 up to par + 2) and Next tray.
+- **Hold to preview** shows the tray after the lift: moved blocks glow, the lifted group floats in front as a ghost.
+  Release to lift, slide off to cancel. **Undo** gives the move back and takes the bottle's last layer out.
+  **Restart** empties the bottle and puts the pool back.
+- **Moves** come from the real economy: each tray is picked by the progression with its grant, and leftovers carry
+  over. Out of moves shows a gentle note pointing to Undo and Restart. Settings has a tray-size picker (fresh pool)
+  for trying the pour on bigger trays.
+- **Sound**, all made in code with Web Audio: a grain hiss per color, as loud as the sand moving; a muffled thup on
+  lift; the bottle ribbon with a hollow resonance that rises as it fills and a faint glass tinkle; cork squeak and
+  pop; a chime; optional room tone with a distant bird. On iPhone the audio session is set to "playback" so the
+  ringer switch doesn't mute it (iPhone Safari can't vibrate from the web, so sound carries the feel).
+- **Quality tiers** (`src/app/game/quality.ts`): Medium is the default (baked contact shadows, 8,000 grains, 2×
+  resolution cap). The game times its first 2 s of play and drops to Low if frames average over 20 ms. High adds
+  real-time soft shadows and 20,000 grains. Depth of field is left out: it needs a post-processing pass, and the
+  table already fades into the room. Settings can pin a tier and show a frame-rate readout.
+- **Tap timings for the economy tuner.** Every lift logs how long the tray sat ready before the tap and how long
+  the pour took (on the device, last 1,000 taps). Settings › Copy tap timings copies them as CSV, to replace the
+  5 s per tap estimate in `src/core/pacing.ts`.
+- **Performance check:** `npm run build && npx vite preview --port 4173` then `npm run perf` plays a full 8×10
+  board in headless Chromium with the CPU slowed 4× and reports per-frame CPU time. On Medium: median 2.9 ms,
+  p95 15 ms, 30–34 draw calls, about 4,000 triangles. Headless Chromium draws in software, so the GPU side of
+  "60 fps on Medium" is checked on her phone with the frame-rate readout.
+- `npm run build:single` writes `dist-single/unfill.html`, one self-contained file (about 1.4 MB) that runs from
+  disk or as a published page.
+
+What's still for later milestones: intro and shelf screens, save and resume, hints and the on-track glow (M5);
+color-blind patterns, reduced motion, home-screen install (M6).
 
 ## Milestone 3: move economy (Nov 14, 2026)
 
@@ -48,13 +89,17 @@ npm run dev        # opens on http://localhost:5173
 npm test           # rules property tests, solver tests, and the full library replay (about 30 s)
 npm run gen        # regenerate the board library and gen/REPORT.md (about 10 min on 4 cores)
 npm run economy:sample && npm run economy:tune   # re-tune the move economy after a library change
-npm run build      # type-check and build a static site into dist/
+npm run build      # type-check and build a static site into dist/ (the game and the lab)
+npm run build:single   # the game as one self-contained HTML file, dist-single/unfill.html
+npm run perf       # after a build and `npx vite preview --port 4173`: per-frame CPU time on a slowed CPU
 ```
 
 To play on a phone, keep `npm run dev` running and open the "Network" address it prints
 (for example `http://192.168.1.20:5173`) on a phone on the same Wi-Fi.
 
 ## Playing the lab
+
+The 2D lab is at `lab.html` (for example http://localhost:5173/lab.html).
 
 - **Tap** a block: its whole same-color group lifts out (single blocks too). One lift = one move.
 - **Press and hold** (0.3 s): the tray shows where everything will land. Moved blocks get a dashed outline, and the
@@ -83,7 +128,14 @@ To play on a phone, keep `npm run dev` running and open the "Network" address it
   - `pacing.ts`: play-time estimates and the 12-minute session target.
 - `src/library/boards.json`: the board library.
 - `gen/`: the Node command that writes the library, and the difficulty study.
-- `src/app/`: the 2D lab (canvas, input, sound).
+- `src/app/game/`: the 3D game (Three.js).
+  - `main.ts`: game state, input (tap, hold to preview), the lift's flight to the bottle, HUD, settings, timing log.
+  - `scene.ts`: renderer, camera fit, lights, table, the glass tray. `blocks.ts`: instanced sand blocks, the seam
+    bridges that join a group, the preview ghost. `pour.ts`: the hourglass pour timeline. `grains.ts`: GPU grains.
+  - `bottle.ts`: the keepsake bottle, its sand layers and the cork. `glass.ts`: the glass material.
+  - `audio.ts`: procedural sound. `textures.ts`: procedural textures. `palette.ts`, `quality.ts`.
+- `src/app/lab/`: the 2D lab (canvas, input, sound).
+- `scripts/perf.cjs`: the performance check. `scripts/single-file.mjs`: the one-file build.
 - `tests/rules.test.ts`: property tests with fast-check, plus worked examples of the repose rule.
 - `tests/solver.test.ts`: solver checks, including exact search against brute force on tiny boards.
 - `tests/library.test.ts`: the library replay and target checks.

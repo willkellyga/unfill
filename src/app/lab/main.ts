@@ -9,7 +9,7 @@ import {
   type Board,
   type LiftResult,
   type RuleName,
-} from '../core';
+} from '../../core';
 import { Sound } from './sound';
 
 // ---------- constants ----------
