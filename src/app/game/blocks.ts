@@ -3,12 +3,17 @@ import { EMPTY } from '../../core';
 import { BLOCK, BLOCK_DEPTH, type Terrarium } from './scene';
 import { sandColor } from './palette';
 import { patternFor, type PatternMode } from './prefs';
-import { sandTexture } from './textures';
+import { sandTexture, sandTileTexture } from './textures';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { mergedDepthMaterial, mergedGeometry, mergedLook, neighborMask, patchMerged, type BlockStyle } from './merged';
 
 /**
- * Sand blocks as instanced meshes: one draw call for every block on screen, one for the "bridges" that fill the
- * seams between touching blocks of one color (so a group reads as one piece of packed sand), and one for the
- * translucent ghost shown while holding to preview.
+ * Sand blocks as instanced meshes: one draw call for every block on screen, and one for the translucent ghost
+ * shown while holding to preview.
+ *
+ * How a group of touching same-color blocks looks depends on the style. The merged styles (merged.ts) wrap each
+ * block around its group's shape in the vertex shader, so a group is one continuous rounded piece. The classic
+ * style draws separate rounded cubes plus "bridges", flat strips that fill the seams between them.
  *
  * Each frame the caller describes what to draw with `begin`, `block`, `bridgesFor` and `ghost`, then `end`.
  */
@@ -89,6 +94,8 @@ export interface BlockDraw {
   rotY?: number;
   color: number;
   glow?: number;
+  /** Merged styles: the neighbors this block joins, when the caller knows (a piece in flight). See merged.ts. */
+  join?: number;
 }
 
 export class Blocks {
@@ -102,6 +109,16 @@ export class Blocks {
   /** Which sands carry their color-blind pattern. */
   patterns: PatternMode = 'fifth';
   private readonly ghostMat: THREE.MeshBasicMaterial;
+  private readonly mask: THREE.InstancedBufferAttribute;
+  /** Per drawn block: where it is, and whether it sits square in a cell (so it can join its neighbors). */
+  private readonly bx = new Float32Array(MAX_BLOCKS);
+  private readonly by = new Float32Array(MAX_BLOCKS);
+  private readonly bColor = new Int16Array(MAX_BLOCKS);
+  private readonly bSquare = new Uint8Array(MAX_BLOCKS);
+  private style: BlockStyle = 'classic';
+  private segments: number;
+  private readonly classicMat: THREE.MeshStandardMaterial;
+  private mergedMat: THREE.MeshStandardMaterial | null = null;
   private n = 0;
   private nb = 0;
   private ng = 0;
@@ -116,17 +133,23 @@ export class Blocks {
 
   constructor(
     private readonly t: Terrarium,
-    geo: THREE.BufferGeometry,
+    segments: number,
+    style: BlockStyle = 'classic',
   ) {
+    this.segments = segments;
+    this.style = style;
     const mat = withGlow(new THREE.MeshStandardMaterial({ map: sandTexture(true), roughness: 0.93, metalness: 0, envMapIntensity: 0.6 }));
     mat.clippingPlanes = [this.clip];
-    this.mesh = new THREE.InstancedMesh(geo, mat, MAX_BLOCKS);
+    this.classicMat = mat;
     this.glow = new THREE.InstancedBufferAttribute(new Float32Array(MAX_BLOCKS), 1);
     this.glow.setUsage(THREE.DynamicDrawUsage);
-    geo.setAttribute('aGlow', this.glow);
     this.pat = new THREE.InstancedBufferAttribute(new Float32Array(MAX_BLOCKS), 1);
     this.pat.setUsage(THREE.DynamicDrawUsage);
-    geo.setAttribute('aPat', this.pat);
+    this.mask = new THREE.InstancedBufferAttribute(new Float32Array(MAX_BLOCKS), 1);
+    this.mask.setUsage(THREE.DynamicDrawUsage);
+    const geo = this.makeGeometry();
+    this.mesh = new THREE.InstancedMesh(geo, mat, MAX_BLOCKS);
+    this.applyStyleMaterial();
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.setColorAt(0, new THREE.Color());
     this.mesh.frustumCulled = false;
@@ -149,7 +172,7 @@ export class Blocks {
     this.bridges.frustumCulled = false;
 
     this.ghostMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false });
-    this.ghostMesh = new THREE.InstancedMesh(geo, this.ghostMat, 120);
+    this.ghostMesh = new THREE.InstancedMesh(this.classicGeometry(), this.ghostMat, 120);
     this.ghostMesh.setColorAt(0, new THREE.Color());
     this.ghostMesh.frustumCulled = false;
     this.ghostMesh.renderOrder = 10;
@@ -171,13 +194,67 @@ export class Blocks {
     }
   }
 
-  /** Swap the block geometry (quality tier changed). */
-  setGeometry(geo: THREE.BufferGeometry): void {
-    const old = this.mesh.geometry;
+  private classicGeometry(): THREE.BufferGeometry {
+    return new RoundedBoxGeometry(BLOCK, BLOCK, BLOCK_DEPTH, this.segments, 0.13);
+  }
+
+  private get merged(): boolean {
+    return this.style !== 'classic';
+  }
+
+  private makeGeometry(): THREE.BufferGeometry {
+    const geo = this.merged ? mergedGeometry(mergedLook(this.style).radius, this.segments) : this.classicGeometry();
     geo.setAttribute('aGlow', this.glow);
     geo.setAttribute('aPat', this.pat);
-    this.mesh.geometry = geo;
-    this.ghostMesh.geometry = geo;
+    geo.setAttribute('aMask', this.mask);
+    return geo;
+  }
+
+  private applyStyleMaterial(): void {
+    if (!this.merged) {
+      this.mesh.material = this.classicMat;
+      this.mesh.customDepthMaterial = undefined;
+      return;
+    }
+    const look = mergedLook(this.style);
+    this.mergedMat?.dispose();
+    const mat = withGlow(new THREE.MeshStandardMaterial({ map: sandTileTexture(), roughness: 0.93, metalness: 0, envMapIntensity: 0.6 }));
+    const glowPatch = mat.onBeforeCompile;
+    mat.onBeforeCompile = (shader, renderer) => {
+      glowPatch.call(mat, shader, renderer);
+      patchMerged(shader, look);
+    };
+    mat.customProgramCacheKey = () => `merged-${look.radius}-${look.score}`;
+    mat.clippingPlanes = [this.clip];
+    this.mergedMat = mat;
+    this.mesh.material = mat;
+    this.mesh.customDepthMaterial = mergedDepthMaterial(look);
+  }
+
+  /** The current look of joined blocks (merged.ts). */
+  get blockStyle(): BlockStyle {
+    return this.style;
+  }
+
+  setStyle(style: BlockStyle): void {
+    if (style === this.style) return;
+    this.style = style;
+    this.rebuild();
+    this.applyStyleMaterial();
+  }
+
+  /** Rounded-edge detail for the quality tier. */
+  setSegments(segments: number): void {
+    this.segments = segments;
+    this.rebuild();
+    const old = this.ghostMesh.geometry;
+    this.ghostMesh.geometry = this.classicGeometry();
+    old.dispose();
+  }
+
+  private rebuild(): void {
+    const old = this.mesh.geometry;
+    this.mesh.geometry = this.makeGeometry();
     old.dispose();
   }
 
@@ -203,6 +280,13 @@ export class Blocks {
     this.mesh.setColorAt(i, sandColor(d.color));
     this.glow.setX(i, d.glow ?? 0);
     this.pat.setX(i, patternFor(d.color, this.patterns));
+    this.mask.setX(i, this.merged ? (d.join ?? 0) : 0);
+    this.bx[i] = d.x;
+    this.by[i] = d.y0;
+    this.bColor[i] = d.color;
+    this.bSquare[i] =
+      d.join === undefined &&
+      d.h === 1 && !d.rotY && !d.z && Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01 && Math.abs(sz - 1) < 0.01 ? 1 : 0;
   }
 
   /**
@@ -210,6 +294,7 @@ export class Blocks {
    * EMPTY; `glowAt` an optional highlight per cell.
    */
   bridgesFor(cols: number, rows: number, colorAt: (i: number) => number, glowAt?: (i: number) => number): void {
+    if (this.merged) return this.joinBlocks(cols, rows, colorAt);
     const T = this.t;
     const inset = 0.13; // matches the block's corner radius
     const span = 1 - BLOCK + 2 * inset + 0.02;
@@ -228,6 +313,25 @@ export class Blocks {
           this.bridge(x + 0.5, y - 0.5, span, span, BLOCK_DEPTH - 0.004, v, g);
         }
       }
+  }
+
+  /** Merged styles: tell each block sitting square in a settled cell which same-color neighbors it joins. */
+  private joinBlocks(cols: number, rows: number, colorAt: (i: number) => number): void {
+    const T = this.t;
+    const x0 = T.cellX(0);
+    const top = T.cellY(0);
+    for (let k = 0; k < this.n; k++) {
+      if (!this.bSquare[k]) continue;
+      const c = Math.round(this.bx[k] - x0);
+      const yc = this.by[k] + BLOCK / 2;
+      const r = Math.round(top - yc);
+      if (c < 0 || c >= cols || r < 0 || r >= rows) continue;
+      if (Math.abs(T.cellX(c) - this.bx[k]) > 1e-3 || Math.abs(T.cellY(r) - yc) > 1e-3) continue;
+      const i = r * cols + c;
+      const v = colorAt(i);
+      if (v === EMPTY || v !== this.bColor[k]) continue;
+      this.mask.setX(k, neighborMask(i, cols, rows, (j) => colorAt(j) === v));
+    }
   }
 
   private bridge(x: number, y: number, w: number, h: number, d: number, color: number, glow: number): void {
@@ -276,6 +380,7 @@ export class Blocks {
       [this.bridgeGlow, this.nb],
       [this.pat, this.n],
       [this.bridgePat, this.nb],
+      [this.mask, this.n],
     ] as const) {
       a.clearUpdateRanges();
       a.addUpdateRange(0, Math.max(1, count));

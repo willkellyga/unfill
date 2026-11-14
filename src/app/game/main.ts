@@ -15,6 +15,7 @@ import libraryText from '../../library/boards.json?raw';
 import curvesText from '../../library/par-curves.json?raw';
 import { Audio } from './audio';
 import { Blocks } from './blocks';
+import { groupMasks, parseBlockStyle, type BlockStyle } from './merged';
 import { Bottle } from './bottle';
 import { Grains } from './grains';
 import { SAND, SAND_HEX, sandColor, SAND_PITCH } from './palette';
@@ -73,7 +74,10 @@ T.setTier(tier);
 
 let grains = new Grains(tier.maxGrains);
 T.scene.add(grains.points);
-const blocks = new Blocks(T, T.blockGeometry());
+// how joined sand looks (merged.ts); ?blocks= picks one for a link, Settings keeps her choice
+const blocksParam = new URLSearchParams(location.search).get('blocks');
+const blockStyle: BlockStyle = parseBlockStyle(blocksParam ?? store.get('unfill-blocks'));
+const blocks = new Blocks(T, tier.blockSegments, blockStyle);
 blocks.setShadows(tier.shadows);
 T.scene.add(blocks.mesh, blocks.bridges, blocks.ghostMesh);
 const bottle = new Bottle();
@@ -102,7 +106,7 @@ systemReduced?.addEventListener?.('change', () => {
 function setTier(t: Tier): void {
   tier = t;
   T.setTier(t);
-  blocks.setGeometry(T.blockGeometry());
+  blocks.setSegments(t.blockSegments);
   blocks.setShadows(t.shadows);
   T.buildTray(T.cols, T.rows);
   T.scene.remove(grains.points);
@@ -191,7 +195,8 @@ let S: Session = Session.restore(boards, loadJson(SAVE_KEY), shelfAtLoad) as Ses
 /** Was there a game in progress to come back to? */
 const resumed = !!S;
 if (!S) {
-  S = new Session(boards, newSeed(), shelfAtLoad);
+  // `?seed=N` (testing, with ?tray) picks the same boards every load, for side-by-side screenshots
+  S = new Session(boards, Number(params.get('seed')) || newSeed(), shelfAtLoad);
   S.begin(trayParam || 1, true);
 } else if (S.cleared) {
   // closed during the clear: the bottle is already on the shelf, so carry on to the next level
@@ -926,19 +931,27 @@ function drawFlights(t: number): void {
     const pose = flightPose(f, t);
     const pourDur = f.done - f.arrive;
     const nb = f.blocks.length;
+    // pour in: blocks melt into the mouth one after another
+    const meltOf = (k: number) =>
+      t > f.arrive ? clamp((t - (f.arrive + (k / nb) * pourDur * 0.6)) / (pourDur * 0.4 + 0.05), 0, 1) : 0;
+    // the piece flies as one: blocks stay joined until each starts to melt
+    const joins = groupMasks(
+      f.blocks.map((b) => ({ x: b.ox, y: b.oy })),
+      (k) => meltOf(k) === 0,
+    );
     f.blocks.forEach((b, k) => {
       let s = pose.s;
-      if (t > f.arrive) {
-        // pour in: blocks melt into the mouth one after another
-        const kt = f.arrive + (k / nb) * pourDur * 0.6;
-        const melt = clamp((t - kt) / (pourDur * 0.4 + 0.05), 0, 1);
+      const melt = meltOf(k);
+      if (melt > 0) {
         s *= 1 - melt;
         if (s <= 0.01) return;
       }
       const cs = Math.cos(pose.spin);
       const sn = Math.sin(pose.spin);
-      const ox = b.ox * pose.s;
-      const oy = b.oy * pose.s;
+      // a joined piece squashes as one (its blocks' spacing too), so no gaps open up inside it
+      const whole = joins[k] !== 0 && blocks.blockStyle !== 'classic';
+      const ox = b.ox * pose.s * (whole ? pose.sx : 1);
+      const oy = b.oy * pose.s * (whole ? pose.sy : 1);
       const x = pose.x + ox * cs;
       const z = pose.z - ox * sn;
       const y = pose.y + oy;
@@ -953,6 +966,7 @@ function drawFlights(t: number): void {
         rotY: pose.spin,
         color: b.color,
         glow: pose.glow,
+        join: joins[k],
       });
     });
   }
@@ -1155,6 +1169,9 @@ function syncSettings(): void {
   for (const b of document.querySelectorAll<HTMLButtonElement>('[data-pat]')) {
     b.setAttribute('aria-pressed', String(b.dataset.pat === patterns));
   }
+  for (const b of document.querySelectorAll<HTMLButtonElement>('[data-blocks]')) {
+    b.setAttribute('aria-pressed', String(b.dataset.blocks === blocks.blockStyle));
+  }
   renderPatKey();
   syncInstall();
   syncPlaytest();
@@ -1202,6 +1219,14 @@ $('setMotion').onclick = () => {
   applyLook();
   syncSettings();
 };
+for (const b of document.querySelectorAll<HTMLButtonElement>('[data-blocks]')) {
+  b.onclick = () => {
+    const style = parseBlockStyle(b.dataset.blocks ?? null);
+    store.set('unfill-blocks', style);
+    blocks.setStyle(style);
+    syncSettings();
+  };
+}
 for (const b of document.querySelectorAll<HTMLButtonElement>('[data-pat]')) {
   b.onclick = () => {
     patterns = parsePatternMode(b.dataset.pat ?? null);
