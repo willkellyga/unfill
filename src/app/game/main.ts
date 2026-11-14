@@ -1651,7 +1651,7 @@ function endLesson(): void {
 let coachTimer = 0;
 function lessonOutOfMoves(): void {
   overShown = true;
-  setCoach('<b>Out of moves!</b> In a run, that’s the end of the run. Let’s pour this tray in again.');
+  setCoach('<b>Out of moves!</b> That ends a run. Let’s try again.');
   clearTimeout(coachTimer);
   coachTimer = window.setTimeout(() => {
     if (!lesson) return;
@@ -1682,24 +1682,20 @@ function syncCoach(): void {
   const target = L.target();
   const color = target ? COLOR_NAMES[S.cur.board.cells[target[0]]] : '';
   if (L.n === 1) {
-    if (S.cleared) setCoach('Every tray you empty fills a bottle for your shelf.');
-    else if (L.lifts === 0) setCoach(`Tap the <b>${color}</b> sand to lift it out of the tray.`);
-    else if (L.lifts === 1)
-      setCoach(`The sand above falls into the gap, and touching ${color} joins into one piece. Lift the <b>${color}</b>.`);
-    else setCoach(`Now the <b>${color}</b>. Empty the tray to fill the bottle.`);
+    if (S.cleared) setCoach('Tray empty, bottle full!');
+    else if (L.lifts === 0) setCoach(`Tap the <b>${color}</b> sand.`);
+    else if (L.lifts === 1) setCoach(`Sand falls and joins up. Tap the <b>${color}</b>.`);
+    else setCoach(`Now the <b>${color}</b>.`);
     return;
   }
   const over = L.lifts - L.par;
-  if (S.cleared) setCoach(over < 0 ? '<b>Under par!</b> That scores a bonus.' : over === 0 ? '<b>Right on par.</b> Nicely done.' : 'Cleared! Over par still scores, just less.');
+  if (S.cleared) setCoach(over < 0 ? '<b>Under par!</b> Bonus points.' : over === 0 ? '<b>Par!</b> Nicely done.' : 'Cleared, over par: fewer points.');
   else if (L.lifts === 0)
-    setCoach(`Each lift uses a move. <b>Par</b> is the goal: empty this tray in <b>${L.par}</b> lifts or fewer. Your lifts show at the top.`);
+    setCoach(`<b>Par ${L.par}</b>: empty the tray in ${L.par} lifts or fewer.`);
   else if (S.pool.moves <= 2)
-    setCoach(
-      `${over > 0 ? 'That’s over par, and only' : 'Only'} <b>${S.pool.moves}</b> ${S.pool.moves === 1 ? 'move' : 'moves'} left! ` +
-        'In a run, running out with sand still in the tray ends the run.',
-    );
-  else if (over > 0) setCoach(`That’s over par. Keep going: it still counts, just for fewer points.`);
-  else setCoach('Tip: lifting one color can join up another. Fewer lifts, more points.');
+    setCoach(`${over > 0 ? 'Over par. ' : ''}<b>${S.pool.moves}</b> ${S.pool.moves === 1 ? 'move' : 'moves'} left. Run out and the run ends.`);
+  else if (over > 0) setCoach('Over par: still counts, fewer points.');
+  else setCoach('Lift one color to join up another.');
 }
 
 /** A tap on the wrong sand during a guided step: the bubble gives a little shake. */
@@ -1848,7 +1844,7 @@ if (resumed && S.over) {
 if (firstPlay && !(resumed && S.over)) {
   $('introTitle').textContent = 'Unfill';
   $('introText').textContent = 'Lift the colors out of a tray of sand to fill a bottle for your shelf.';
-  $('introSmall').textContent = 'First, a quick lesson: two little trays.';
+  $('introSmall').textContent = 'First, a quick lesson.';
   $('startBtn').textContent = 'Begin';
 }
 warmup();

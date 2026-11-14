@@ -1111,8 +1111,8 @@ html.reduced .track .slot.on {
   bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
   transform: translateX(-50%);
   width: min(360px, calc(100% - 32px));
-  /* room for three lines, so the tray isn't reframed as the words change */
-  min-height: 92px;
+  /* room for two lines, so the tray isn't reframed as the words change */
+  min-height: 80px;
   display: flex;
   flex-direction: column;
   justify-content: center;
