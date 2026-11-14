@@ -122,7 +122,7 @@ export class Session {
   total = 0;
   /** The stored solution, as shown, and the board after each of its taps: path[k] is the board after k taps. */
   solution: number[] = [];
-  private path: Board[] = [];
+  protected path: Board[] = [];
   private byId: Map<string, LibraryEntry>;
 
   constructor(
@@ -227,7 +227,7 @@ export class Session {
   }
 
   /** The bottle for the board just cleared, built from the lifts. */
-  private keepsake(at: number): Keepsake {
+  protected keepsake(at: number): Keepsake {
     const layers: [number, number][] = [];
     const snaps = [...this.history, this.cur];
     for (let k = 0; k < this.taps.length; k++) {

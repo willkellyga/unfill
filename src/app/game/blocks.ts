@@ -67,7 +67,10 @@ vPatUv = (modelMatrix * vec4(transformed, 0.0)).xy;
       );
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying float vGlow;\nvarying float vPat;\nvarying vec2 vPatUv;\n' + PATTERN_GLSL)
-      .replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb *= 1.0 - 0.3 * patMask(vPatUv, vPat);')
+      .replace('#include <map_fragment>', '#include <map_fragment>\n' +
+          // pressed patterns darken the sand; on a dark sand (the daily's indigo) they lighten it instead, to stay visible
+          'float patM = patMask(vPatUv, vPat);\n' +
+          'diffuseColor.rgb = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722)) < 0.2 ? mix(diffuseColor.rgb, vec3(1.0), 0.32 * patM) : diffuseColor.rgb * (1.0 - 0.3 * patM);')
       .replace(
         '#include <emissivemap_fragment>',
         '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.94, 0.84) * vGlow * 0.55;',

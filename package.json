@@ -24,7 +24,9 @@
     "tuning": "tsx gen/tuning/tune.ts",
     "tuning:calibrate": "tsx gen/tuning/calibrate.ts",
     "tuning:playtest": "tsx gen/tuning/playtest.ts",
-    "lesson-check": "node scripts/lesson-check.cjs"
+    "lesson-check": "node scripts/lesson-check.cjs",
+    "daily": "tsx gen/daily/build.ts",
+    "daily-check": "node scripts/daily-check.cjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

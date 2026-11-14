@@ -13,3 +13,5 @@ export * from './pacing';
 export * from './session';
 export * from './tuning';
 export * from './tutorial';
+export * from './daily';
+export * from './daily-session';

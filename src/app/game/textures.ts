@@ -188,12 +188,14 @@ export function causticTexture(): THREE.CanvasTexture {
 }
 
 /** The warm room behind the table: late-afternoon light, brighter toward the top left. */
-export function backdropTexture(): THREE.CanvasTexture {
+export function backdropTexture(mood: 'day' | 'daily' = 'day'): THREE.CanvasTexture {
   const [c, g] = canvas(64, 256);
   const grd = g.createLinearGradient(0, 0, 0, 256);
-  grd.addColorStop(0, '#fbeee0');
-  grd.addColorStop(0.55, '#f6e2cd');
-  grd.addColorStop(1, '#efd3b8');
+  // the Daily Puzzle's room is the same room at dusk: lavender sky fading to a peach glow at the table
+  const stops = mood === 'daily' ? ['#d9d2ec', '#ead6dc', '#f1d2bf'] : ['#fbeee0', '#f6e2cd', '#efd3b8'];
+  grd.addColorStop(0, stops[0]);
+  grd.addColorStop(0.55, stops[1]);
+  grd.addColorStop(1, stops[2]);
   g.fillStyle = grd;
   g.fillRect(0, 0, 64, 256);
   return tex(c);
