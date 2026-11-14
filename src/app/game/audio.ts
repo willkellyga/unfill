@@ -6,8 +6,9 @@
  *  - a muffled "thup" when a group lifts;
  *  - a ribbon of sand into the bottle, with a soft glassy resonance that rises as the bottle fills, and a faint
  *    tinkle where it lands;
- *  - a cork squeak and pop, and a warm little chime when a tray is emptied;
- *  - an optional quiet room: low room tone and a distant bird now and then.
+ *  - a cork squeak and pop, and a warm little chime when a tray is emptied.
+ *
+ * There is no background sound: only things that happen make a sound.
  *
  * iPhone notes: the context is created inside the first tap (iOS requires it), and the audio session is set to
  * "playback" where Safari supports it, so the ringer switch doesn't silence the game. Phones can't vibrate from the
@@ -19,18 +20,12 @@ export class Audio {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private sfx: GainNode | null = null;
-  private amb: GainNode | null = null;
   private sandBuf: AudioBuffer | null = null;
-  private brownBuf: AudioBuffer | null = null;
-  private ambSrc: AudioBufferSourceNode | null = null;
-  private birdTimer = 0;
   private live: AudioScheduledSourceNode[] = [];
   muted: boolean;
-  ambient: boolean;
 
-  constructor(muted: boolean, ambient: boolean) {
+  constructor(muted: boolean) {
     this.muted = muted;
-    this.ambient = ambient;
   }
 
   /** Call from inside a tap. Safe to call many times. */
@@ -50,7 +45,6 @@ export class Audio {
     s.buffer = b;
     s.connect(a.destination);
     s.start();
-    this.syncAmbient();
   }
 
   private context(): AudioContext | null {
@@ -68,11 +62,7 @@ export class Audio {
       this.master.connect(comp).connect(a.destination);
       this.sfx = a.createGain();
       this.sfx.connect(this.master);
-      this.amb = a.createGain();
-      this.amb.gain.value = 0;
-      this.amb.connect(this.master);
       this.sandBuf = this.makeSand(a);
-      this.brownBuf = this.makeBrown(a);
       document.addEventListener('visibilitychange', () => {
         if (!this.ctx) return;
         if (document.hidden) void this.ctx.suspend();
@@ -115,18 +105,6 @@ export class Audio {
     let peak = 0;
     for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(d[i]));
     for (let i = 0; i < n; i++) d[i] /= peak;
-    return buf;
-  }
-
-  private makeBrown(a: AudioContext): AudioBuffer {
-    const n = a.sampleRate * 4;
-    const buf = a.createBuffer(1, n, a.sampleRate);
-    const d = buf.getChannelData(0);
-    let last = 0;
-    for (let i = 0; i < n; i++) {
-      last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02;
-      d[i] = last * 3.5;
-    }
     return buf;
   }
 
@@ -409,88 +387,5 @@ export class Audio {
     this.muted = m;
     if (m) this.hush();
     if (this.master && this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.9, this.ctx.currentTime, 0.03);
-    this.syncAmbient();
-  }
-
-  setAmbient(on: boolean): void {
-    this.ambient = on;
-    this.syncAmbient();
-  }
-
-  /** Room tone and the occasional distant bird. */
-  private syncAmbient(): void {
-    const a = this.ctx;
-    if (!a || !this.amb) return;
-    const on = this.ambient && !this.muted;
-    this.amb.gain.setTargetAtTime(on ? 1 : 0, a.currentTime, 0.4);
-    if (on && !this.ambSrc && this.brownBuf) {
-      const s = a.createBufferSource();
-      s.buffer = this.brownBuf;
-      s.loop = true;
-      const lp = a.createBiquadFilter();
-      lp.type = 'lowpass';
-      lp.frequency.value = 380;
-      const g = a.createGain();
-      g.gain.value = 0.05;
-      s.connect(lp).connect(g).connect(this.amb);
-      s.start();
-      this.ambSrc = s;
-      this.scheduleBird();
-    }
-    if (!on && this.ambSrc) {
-      const s = this.ambSrc;
-      this.ambSrc = null;
-      window.clearTimeout(this.birdTimer);
-      window.setTimeout(() => {
-        try {
-          s.stop();
-        } catch {
-          /* fine */
-        }
-      }, 1500);
-    }
-  }
-
-  private scheduleBird(): void {
-    window.clearTimeout(this.birdTimer);
-    this.birdTimer = window.setTimeout(
-      () => {
-        this.bird();
-        if (this.ambSrc) this.scheduleBird();
-      },
-      9000 + Math.random() * 14000,
-    );
-  }
-
-  private bird(): void {
-    const a = this.ctx;
-    if (!a || !this.amb || document.hidden) return;
-    const chirps = 2 + Math.floor(Math.random() * 3);
-    const base = 2600 + Math.random() * 900;
-    const pan = a.createStereoPanner ? a.createStereoPanner() : null;
-    if (pan) pan.pan.value = Math.random() * 1.4 - 0.7;
-    const lp = a.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 4200;
-    const out = a.createGain();
-    out.gain.value = 0.022;
-    if (pan) lp.connect(pan).connect(out);
-    else lp.connect(out);
-    out.connect(this.amb);
-    for (let i = 0; i < chirps; i++) {
-      const t = a.currentTime + 0.05 + i * (0.13 + Math.random() * 0.06);
-      const o = a.createOscillator();
-      const g = a.createGain();
-      o.type = 'sine';
-      o.frequency.setValueAtTime(base, t);
-      o.frequency.exponentialRampToValueAtTime(base * 1.45, t + 0.045);
-      o.frequency.exponentialRampToValueAtTime(base * 1.1, t + 0.09);
-      g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(1, t + 0.012);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
-      o.connect(g).connect(lp);
-      o.start(t);
-      o.stop(t + 0.12);
-    }
   }
 }

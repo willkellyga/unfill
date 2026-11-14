@@ -96,7 +96,7 @@ T.scene.add(blocks.mesh, blocks.ghostMesh);
 const bottle = new Bottle();
 bottle.setScale(BOTTLE_SCALE);
 T.scene.add(bottle.group);
-const audio = new Audio(store.get('unfill-muted') === '1', store.get('unfill-ambient') !== '0');
+const audio = new Audio(store.get('unfill-muted') === '1');
 
 // milestone 6 settings: color-blind patterns, reduced motion (follows the phone until she flips it), vibration
 let patterns: PatternMode = parsePatternMode(store.get('unfill-patterns'));
@@ -1544,8 +1544,6 @@ let showFps = store.get('unfill-fps') === '1';
 
 function syncSettings(): void {
   $('setSound').setAttribute('aria-checked', String(!audio.muted));
-  $('setAmbient').setAttribute('aria-checked', String(audio.ambient));
-  $<HTMLButtonElement>('setAmbient').disabled = audio.muted;
   $('setFps').setAttribute('aria-checked', String(showFps));
   for (const b of document.querySelectorAll<HTMLButtonElement>('[data-tier]')) {
     b.setAttribute('aria-pressed', String(b.dataset.tier === tierChoice));
@@ -1589,12 +1587,6 @@ $('setSound').onclick = () => {
   audio.unlock();
   audio.setMuted(!audio.muted);
   store.set('unfill-muted', audio.muted ? '1' : '0');
-  syncSettings();
-};
-$('setAmbient').onclick = () => {
-  audio.unlock();
-  audio.setAmbient(!audio.ambient);
-  store.set('unfill-ambient', audio.ambient ? '1' : '0');
   syncSettings();
 };
 $('setVibe').onclick = () => {
