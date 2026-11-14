@@ -71,6 +71,23 @@ export function pointsFor(lifts: number, par: number): number {
 /** Boards remembered so none repeat soon (plan: "the last 200 board ids"). */
 export const RECENT_LIMIT = 200;
 
+/** Levels up to this one show an easier par (Will, Nov 14: "easier to beat par and feeling like you're doing better"). */
+export const PAR_CUSHION_UNTIL = 20;
+
+/**
+ * The par she sees and scores against. On levels 1–20 par is proven to be the shortest solution (or nearly always is),
+ * so it could only be matched, never beaten. There it's raised by the extra moves a typical player takes on that
+ * board: the "medium" simulated player's average from the library (gen/evaluate.ts), rounded, and at least 1. A
+ * typical player then lands around par and beats it about half the time; a careful one beats it most of the time.
+ * From level 21 par is the solver's best route again. A level's move grant is raised to at least this par (Session.grant),
+ * which only changes peak levels within 1–20.
+ */
+export function shownPar(n: number, entry: { par: number; metrics: LibraryEntry['metrics'] }): number {
+  if (n > PAR_CUSHION_UNTIL) return entry.par;
+  const typicalExtra = Math.floor(((entry.metrics.players.medium ?? entry.metrics.excess100) + 50) / 100);
+  return entry.par + Math.max(1, typicalExtra);
+}
+
 /** Plan: 3 stars for par or better, 2 for up to par + 2, 1 for any clear. */
 export function starsFor(lifts: number, par: number): 1 | 2 | 3 {
   return lifts <= par ? 3 : lifts <= par + 2 ? 2 : 1;
@@ -121,13 +138,17 @@ export class Session {
     this.byId = new Map(boards.map((b) => [b.id, b]));
   }
 
+  /** The par she sees and scores against (easier on levels 1–20; see shownPar). */
   get par(): number {
-    return this.pick.entry.par;
+    return shownPar(this.n, this.pick.entry);
   }
 
-  /** Moves poured in for this board. */
+  /**
+   * Moves poured in for this board: the economy's grant, but never fewer than the par she's shown, so on the
+   * easier-par levels (1–20) a level always brings at least its par in moves.
+   */
   get grant(): number {
-    return grantFor(this.pick.slot, this.pick.entry);
+    return Math.max(grantFor(this.pick.slot, this.pick.entry), this.par);
   }
 
   get cleared(): boolean {
