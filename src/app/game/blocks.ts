@@ -2,8 +2,7 @@ import * as THREE from 'three';
 import { EMPTY } from '../../core';
 import { BLOCK, BLOCK_DEPTH, type Terrarium } from './scene';
 import { sandColor } from './palette';
-import { paintedWoodTexture, sandTexture } from './textures';
-import type { Theme } from './themes';
+import { sandTexture } from './textures';
 
 /**
  * Sand blocks as instanced meshes: one draw call for every block on screen, one for the "bridges" that fill the
@@ -16,18 +15,16 @@ const MAX_BLOCKS = 300;
 const MAX_BRIDGES = 400;
 
 /** Adds a per-instance glow (0..1) to a standard material, for the hover and preview highlights. */
-const selfLit = { value: 0 };
 function withGlow(mat: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
   mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uSelfLit = selfLit;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute float aGlow;\nvarying float vGlow;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGlow = aGlow;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vGlow;\nuniform float uSelfLit;')
+      .replace('#include <common>', '#include <common>\nvarying float vGlow;')
       .replace(
         '#include <emissivemap_fragment>',
-        '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.94, 0.84) * vGlow * 0.55 + diffuseColor.rgb * uSelfLit;',
+        '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.94, 0.84) * vGlow * 0.55;',
       );
   };
   mat.customProgramCacheKey = () => 'glow';
@@ -59,9 +56,6 @@ export class Blocks {
   private readonly ghostMat: THREE.MeshBasicMaterial;
   private n = 0;
   private nb = 0;
-  private radius = 0.13;
-  private bridgesOn = true;
-  private readonly maps = { sand: sandTexture(true), seam: sandTexture(false), grain: paintedWoodTexture() };
   private ng = 0;
   private readonly m = new THREE.Matrix4();
   private readonly q = new THREE.Quaternion();
@@ -105,26 +99,6 @@ export class Blocks {
     this.ghostMesh.setColorAt(0, new THREE.Color());
     this.ghostMesh.frustumCulled = false;
     this.ghostMesh.renderOrder = 10;
-  }
-
-  /** Restyle the blocks for a look-and-feel theme. The caller swaps in a geometry with the theme's corners. */
-  applyTheme(th: Theme): void {
-    const b = th.block;
-    selfLit.value = b.self;
-    this.radius = b.radius;
-    this.bridgesOn = b.bridges;
-    const pairs: [THREE.MeshStandardMaterial, THREE.Texture | null][] = [
-      [this.mesh.material as THREE.MeshStandardMaterial, b.map === 'sand' ? this.maps.sand : b.map === 'grain' ? this.maps.grain : null],
-      [this.bridges.material as THREE.MeshStandardMaterial, b.map === 'sand' ? this.maps.seam : b.map === 'grain' ? this.maps.grain : null],
-    ];
-    for (const [m, map] of pairs) {
-      m.map = map;
-      m.roughness = b.roughness;
-      m.metalness = b.metalness;
-      m.envMapIntensity = b.env;
-      m.flatShading = b.flat;
-      m.needsUpdate = true;
-    }
   }
 
   /** Clip blocks above height y (null: no clipping). The plane stays on the materials, so no shader recompile. */
@@ -181,10 +155,9 @@ export class Blocks {
    */
   bridgesFor(cols: number, rows: number, colorAt: (i: number) => number, glowAt?: (i: number) => number): void {
     const T = this.t;
-    if (!this.bridgesOn) return;
-    const inset = this.radius; // matches the block's corner radius
+    const inset = 0.13; // matches the block's corner radius
     const span = 1 - BLOCK + 2 * inset + 0.02;
-    const long = BLOCK - 1.2 * inset; // fills most of the rounded dip between the two blocks
+    const long = BLOCK - 0.16; // fills most of the rounded dip between the two blocks
     for (let r = 0; r < rows; r++)
       for (let c = 0; c < cols; c++) {
         const i = r * cols + c;

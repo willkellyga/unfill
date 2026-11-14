@@ -14,6 +14,10 @@ Undo/Restart and a fold-out settings panel at the bottom), and levels flow like 
 them. On a clear the bottle corks and slides off, a new bottle drops in, and the next tray's sand pours in through the
 top of the glass while leftover moves count up. Tapping skips ahead. Undo and Restart only act on the current level.
 
+Layout (Will's pick, Nov 14): "Bottle top". The camera faces the tray nearly head-on so it fills the screen's width,
+the table is cropped away, and the bottle stands centered on the top rail between the level and moves chips. Round
+icon buttons sit along the bottom, and the gear opens the settings panel.
+
 - **The lift.** The tapped group squishes, floats out of the glass, arcs over to the bottle, and melts into it as a
   ribbon of grains. The bottle gains a layer of that color, sized by the blocks lifted, so it is exactly full when
   the tray is empty. Layer tops wander a little, like hand-poured sand art.

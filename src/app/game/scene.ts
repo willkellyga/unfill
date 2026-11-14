@@ -1,7 +1,7 @@
 import * as THREE from 'three';
+import { BOTTLE_H } from './bottle';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import type { Theme } from './themes';
 import { backdropTexture, causticTexture, glareTexture, softShadowTexture, woodTexture } from './textures';
 import type { Tier } from './quality';
 
@@ -20,23 +20,13 @@ const PLINTH_H = 0.45;
 const RAIL_H = 0.28;
 const GLASS_T = 0.06;
 const INNER_DEPTH = 1.0;
-/** Camera angle above the tray. The plan sketches 30°; an upright tray reads and taps better a little flatter. */
-const PITCH_DEG = 21;
-/** A small turn to the right, so the blocks and the glass show their depth. */
-const YAW_DEG = 9;
 const FOV = 26;
-
-/** How the camera looks at the tray, and where the bottle stands: one per UI layout. */
-export interface View {
-  pitchDeg: number;
-  yawDeg: number;
-  /** 'full' keeps the plinth, the bottle and a lifted group's arc in view; 'tight' frames the glass and bottle only. */
-  box: 'full' | 'tight';
-  bottleAt: 'right' | 'center';
-  bottleScale: number;
-}
-
-export const CLASSIC_VIEW: View = { pitchDeg: PITCH_DEG, yawDeg: YAW_DEG, box: 'full', bottleAt: 'right', bottleScale: 0.84 };
+/**
+ * Bottle top (Will's pick): the camera faces the tray nearly head-on so it fills the screen's width, the table is
+ * cropped away, and the bottle stands centered on the top rail between the level and moves chips.
+ */
+const PITCH_DEG = 7;
+export const BOTTLE_SCALE = 0.72;
 
 export interface Insets {
   top: number;
@@ -49,8 +39,6 @@ export class Terrarium {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(FOV, 1, 0.5, 200);
   readonly key: THREE.DirectionalLight;
-  private readonly hemi: THREE.HemisphereLight;
-  private themeCaustics = true;
   readonly fov = FOV;
   cols = 6;
   rows = 7;
@@ -67,7 +55,6 @@ export class Terrarium {
   private readonly causticMat: THREE.ShaderMaterial;
   private causticMesh: THREE.Mesh | null = null;
   private readonly table: THREE.Mesh;
-  private readonly tableTex: THREE.Texture;
   private readonly frontPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -BLOCK_DEPTH / 2);
   private readonly ray = new THREE.Raycaster();
   private tier!: Tier;
@@ -92,8 +79,7 @@ export class Terrarium {
     s.environmentIntensity = 0.32;
     pmrem.dispose();
 
-    this.hemi = new THREE.HemisphereLight(0xfff1e2, 0xc59a76, 1.35);
-    s.add(this.hemi);
+    s.add(new THREE.HemisphereLight(0xfff1e2, 0xc59a76, 1.35));
     this.key = new THREE.DirectionalLight(0xffd6a3, 2.4);
     this.key.position.set(-7, 9, 7);
     this.key.shadow.mapSize.set(1024, 1024);
@@ -130,7 +116,6 @@ export class Terrarium {
     const tableTex = this.wood.clone();
     tableTex.repeat.set(3, 6);
     tableTex.needsUpdate = true;
-    this.tableTex = tableTex;
     this.table = new THREE.Mesh(
       new THREE.PlaneGeometry(60, 60),
       new THREE.MeshStandardMaterial({ map: tableTex, roughness: 0.82, color: 0xf4e4d0 }),
@@ -172,7 +157,7 @@ export class Terrarium {
         for (const x of Array.isArray(m) ? m : m ? [m] : []) x.needsUpdate = true;
       });
     }
-    if (this.causticMesh) this.causticMesh.visible = t.caustics && this.themeCaustics;
+    if (this.causticMesh) this.causticMesh.visible = t.caustics;
     this.resizeRenderer();
   }
 
@@ -186,14 +171,10 @@ export class Terrarium {
     return this.rows + HEADROOM + RAIL_H;
   }
 
-  view: View = CLASSIC_VIEW;
-  /** Block corners, set by the look-and-feel theme. */
-  blockLook = { radius: 0.13, segments: 3 };
 
   /** Where the bottle stands (its base center). */
   get bottleSpot(): THREE.Vector3 {
-    const x = this.view.bottleAt === 'center' ? 0 : this.cols / 2 - 0.4 - 0.5 * this.view.bottleScale;
-    return new THREE.Vector3(x, this.railTop, 0);
+    return new THREE.Vector3(0, this.railTop, 0);
   }
 
   /** Build the tray for a board size. */
@@ -281,7 +262,7 @@ export class Terrarium {
     this.causticMesh = new THREE.Mesh(new THREE.PlaneGeometry(w + 2, 3.2), this.causticMat);
     this.causticMesh.rotation.x = -Math.PI / 2;
     this.causticMesh.position.set(1.0, -PLINTH_H + 0.015, INNER_DEPTH / 2 + 2.0);
-    this.causticMesh.visible = (this.tier?.caustics ?? true) && this.themeCaustics;
+    this.causticMesh.visible = this.tier?.caustics ?? true;
     t.add(this.causticMesh);
 
     this.scene.add(t);
@@ -302,10 +283,7 @@ export class Terrarium {
 
   /** Block geometry for the current tier: a soft rounded cube. */
   blockGeometry(): THREE.BufferGeometry {
-    const { radius, segments } = this.blockLook;
-    // segments 1 is a deliberate chamfer (cut gems); otherwise the quality tier decides how smooth the corners are
-    const segs = segments === 1 ? 1 : Math.max(this.tier.blockSegments, segments - 1);
-    return new RoundedBoxGeometry(BLOCK, BLOCK, BLOCK_DEPTH, segs, radius);
+    return new RoundedBoxGeometry(BLOCK, BLOCK, BLOCK_DEPTH, this.tier.blockSegments, 0.13);
   }
 
   cellX(c: number): number {
@@ -317,42 +295,6 @@ export class Terrarium {
   }
 
   /** The cell under a screen point, or null. Rays hit the front face of the blocks. */
-  /** Restyle the room, the frame and the glass for a look-and-feel theme. */
-  applyTheme(th: Theme): void {
-    const s = this.scene;
-    const r = th.room;
-    (s.background as THREE.Texture | null)?.dispose();
-    s.background = backdropTexture(r.sky);
-    (s.fog as THREE.Fog).color.set(r.fog);
-    s.environmentIntensity = r.env;
-    this.renderer.toneMappingExposure = r.exposure;
-    this.hemi.color.set(r.hemiSky);
-    this.hemi.groundColor.set(r.hemiGround);
-    this.hemi.intensity = r.hemiI;
-    this.key.color.set(r.key);
-    this.key.intensity = r.keyI;
-    const table = this.table.material as THREE.MeshStandardMaterial;
-    table.color.set(r.table);
-    const tableMap = r.tableGrain ? this.tableTex : null;
-    if (table.map !== tableMap) {
-      table.map = tableMap;
-      table.needsUpdate = true;
-    }
-    const f = th.frame;
-    this.woodMat.color.set(f.color);
-    this.woodMat.roughness = f.roughness;
-    this.woodMat.metalness = f.metalness;
-    const frameMap = f.grain ? this.wood : null;
-    if (this.woodMat.map !== frameMap) {
-      this.woodMat.map = frameMap;
-      this.woodMat.needsUpdate = true;
-    }
-    this.glassMat.color.set(th.glass.color);
-    this.glassMat.opacity = th.glass.opacity;
-    this.themeCaustics = r.caustics;
-    if (this.causticMesh) this.causticMesh.visible = (this.tier?.caustics ?? true) && r.caustics;
-  }
-
   /** The bottle's contact shadow follows it as it drops in or slides away (dx, dy from its spot on the rail). */
   moveBottleShadow(dx: number, dy: number): void {
     const m = this.bottleShadow;
@@ -404,18 +346,13 @@ export class Terrarium {
 
     const regionW = Math.max(100, W - 2 * insets.side);
     const regionH = Math.max(100, H - insets.top - insets.bottom);
-    const v = this.view;
-    const tight = v.box === 'tight';
-    const xs = this.cols / 2 + (tight ? 0.12 : 0.4);
-    // bottle and cork; the full box also keeps the top of a lifted group's arc in view
-    const top = this.railTop + (tight ? v.bottleScale * 3.3 : 3.1);
-    const box = tight
-      ? new THREE.Box3(new THREE.Vector3(-xs, -0.12, -0.55), new THREE.Vector3(xs, top, 0.55))
-      : new THREE.Box3(new THREE.Vector3(-xs, -PLINTH_H, -0.8), new THREE.Vector3(xs, top, 0.8));
+    // the glass edge to edge, and the bottle with its cork on top; the plinth and table are cropped away
+    const xs = this.cols / 2 + 0.12;
+    const top = this.railTop + BOTTLE_SCALE * BOTTLE_H;
+    const box = new THREE.Box3(new THREE.Vector3(-xs, -0.12, -0.55), new THREE.Vector3(xs, top, 0.55));
     const center = box.getCenter(new THREE.Vector3());
-    const pitch = (v.pitchDeg * Math.PI) / 180;
-    const yaw = (v.yawDeg * Math.PI) / 180;
-    const dir = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
+    const pitch = (PITCH_DEG * Math.PI) / 180;
+    const dir = new THREE.Vector3(0, Math.sin(pitch), Math.cos(pitch));
     const corners: THREE.Vector3[] = [];
     for (const x of [box.min.x, box.max.x])
       for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) corners.push(new THREE.Vector3(x, y, z));

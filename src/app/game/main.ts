@@ -26,10 +26,9 @@ import { Blocks } from './blocks';
 import { Bottle } from './bottle';
 import { Grains } from './grains';
 import { SAND, sandColor, SAND_PITCH } from './palette';
-import { FIRM, fallTime, planPour, retimeSolid, SOLID_FALL, type PourPlan, type SolidStyle } from './pour';
-import { THEMES, type Theme, type ThemeName } from './themes';
+import { FIRM, fallTime, planPour, type PourPlan } from './pour';
 import { SLOW_FRAME_MS, TIERS, type Tier, type TierName } from './quality';
-import { BLOCK, CLASSIC_VIEW, Terrarium, type View } from './scene';
+import { BLOCK, BOTTLE_SCALE, Terrarium } from './scene';
 
 // ---------------------------------------------------------------- setup
 
@@ -75,6 +74,7 @@ const blocks = new Blocks(T, T.blockGeometry());
 blocks.setShadows(tier.shadows);
 T.scene.add(blocks.mesh, blocks.bridges, blocks.ghostMesh);
 const bottle = new Bottle();
+bottle.setScale(BOTTLE_SCALE);
 T.scene.add(bottle.group);
 const audio = new Audio(store.get('unfill-muted') === '1', store.get('unfill-ambient') !== '0');
 
@@ -304,13 +304,8 @@ function doLift(cell: number): void {
 
   // the tray pour, starting as the group leaves its cells
   pour = planPour(before.board, before.ids, res.group, res.trace!.steps[0] ?? [], t0 + 0.12);
-  if (theme.motion === 'sand') {
-    launchPourGrains(pour);
-    pourSound(pour, t0);
-  } else {
-    retimeSolid(pour, theme.motion);
-    landingSound(pour, t0);
-  }
+  launchPourGrains(pour);
+  pourSound(pour, t0);
 
   // the group's flight to the bottle and the layer it pours
   const color = before.board.cells[cell];
@@ -525,19 +520,6 @@ function pourSound(p: PourPlan, t0: number): void {
   p.columnEnds.forEach((e, i) => audio.pat(e - t0 + 0.02 * i, 0.07));
 }
 
-/** Solid blocks: a knock as each one lands, pitched and weighted by the theme. */
-function landingSound(p: PourPlan, t0: number): void {
-  const vol = theme.motion === 'thunk' ? 0.16 : theme.motion === 'float' ? 0.05 : 0.1;
-  const seen = new Set<number>();
-  for (const b of [...p.blocks].sort((a, c) => a.d1 - c.d1)) {
-    const slot = Math.round(b.d1 * 30);
-    if (seen.has(slot)) continue;
-    seen.add(slot);
-    audio.pat(b.d1 - t0, vol);
-  }
-  if (theme.motion === 'snap' && p.blocks.length) audio.tinkle(p.end - t0 - 0.1, 3, 0.04);
-}
-
 // ---------------------------------------------------------------- undo, restart, fast-forward
 
 /** Finish every animation now: a tap during a pour fast-forwards it. */
@@ -640,11 +622,6 @@ function drawPour(p: PourPlan, t: number): void {
     still[cell] = color;
     blocks.block({ x: T.cellX(cell % cols), y0: T.cellY((cell / cols) | 0) - BLOCK / 2, h: 1, color });
   }
-  if (theme.motion !== 'sand') {
-    drawSolidFall(p, t, theme.motion, still);
-    blocks.bridgesFor(cols, rows, (i) => still[i]);
-    return;
-  }
   // landed blocks join the still set once they've firmed up, so bridges grow as the sand settles
   for (const b of p.blocks) {
     const x = T.cellX(b.col);
@@ -668,46 +645,6 @@ function drawPour(p: PourPlan, t: number): void {
     }
   }
   blocks.bridgesFor(cols, rows, (i) => still[i]);
-}
-
-/** Blocks falling as solid pieces, each with its theme's landing: jelly wobble, gem glint-bounce, soft float, toy thunk. */
-function drawSolidFall(p: PourPlan, t: number, style: SolidStyle, still: Int8Array): void {
-  const cols = T.cols;
-  const settle = SOLID_FALL[style].settle;
-  for (const b of p.blocks) {
-    const x = T.cellX(b.col);
-    const srcY = T.cellY(b.fromRow) - BLOCK / 2;
-    const dstY = T.cellY(b.toRow) - BLOCK / 2;
-    if (t < b.d1) {
-      const u = clamp((t - b.d0) / (b.d1 - b.d0), 0, 1);
-      const e = style === 'float' ? u * u * (3 - 2 * u) : u * u;
-      // jelly stretches a little as it falls
-      const st = style === 'jelly' ? 0.1 * Math.sin(u * Math.PI * 0.5) * (t > b.d0 ? 1 : 0) : 0;
-      blocks.block({ x, y0: srcY + (dstY - srcY) * e, h: 1, sy: 1 + st, sx: 1 - st * 0.5, sz: 1 - st * 0.5, color: b.color });
-      continue;
-    }
-    const q = clamp((t - b.d1) / settle, 0, 1);
-    let y = dstY;
-    let sx = 1;
-    let sy = 1;
-    let rot = 0;
-    if (style === 'jelly') {
-      const k = Math.cos(q * Math.PI * 3) * Math.exp(-q * 4.5) * (1 - q);
-      sy = 1 - 0.22 * k;
-      sx = 1 + 0.13 * k;
-      y = dstY - (BLOCK * (1 - sy)) / 2; // squash from the floor up
-    } else if (style === 'snap') {
-      y = dstY + 0.07 * Math.sin(q * Math.PI);
-    } else if (style === 'thunk') {
-      y = dstY + 0.09 * Math.abs(Math.sin(q * Math.PI * 2)) * (1 - q);
-      rot = 0.09 * Math.sin(q * Math.PI * 3) * (1 - q);
-      sy = 1 - 0.04 * Math.sin(Math.min(1, q * 4) * Math.PI);
-    } else {
-      sy = 1 - 0.03 * Math.sin(q * Math.PI);
-    }
-    blocks.block({ x, y0: y, h: 1, sx, sy, sz: sx, rotY: rot, color: b.color });
-    if (q >= 1) still[b.toRow * cols + b.col] = b.color;
-  }
 }
 
 function drawPreview(p: Preview, t: number): void {
@@ -924,7 +861,7 @@ function updateHud(): void {
   if (!$('moves').classList.contains('pour')) $('moves').textContent = String(pool.moves);
   $('movesLabel').textContent = pool.moves === 1 ? 'move' : 'moves';
   $('levelLabel').innerHTML =
-    `<b>Level ${n}</b><span class="meta"> · par ${pick.entry.par}<span class="size"> · ${pick.entry.cols}×${pick.entry.rows}</span></span>`;
+    `<b>Level ${n}</b><span class="meta">par ${pick.entry.par}</span>`;
   const left = countBlocks(cur.board);
   $('left').textContent = `${left} ${left === 1 ? 'block' : 'blocks'} left`;
   $('hud').classList.toggle('empty', pool.moves === 0 && !cleared);
@@ -962,72 +899,11 @@ function layout(): void {
   const hud = $('hud').getBoundingClientRect();
   const bar = $('bar').getBoundingClientRect();
   const H = window.innerHeight;
-  // with the bottle centered on top, the header's chips sit either side of it, so the scene can use their height
-  const top = ui === 'hero' ? hud.top + parseFloat(getComputedStyle($('hud')).paddingTop) : hud.bottom + 4;
-  const side = ui === 'classic' ? 10 : 4;
-  T.frame({ top: Math.max(8, top), bottom: H - bar.top + 6, side });
+  // the bottle sits centered on top and the header's chips sit either side of it, so the scene can use their height
+  const top = hud.top + parseFloat(getComputedStyle($('hud')).paddingTop);
+  T.frame({ top: Math.max(8, top), bottom: H - bar.top + 6, side: 4 });
   const vp = T.viewport;
   grains.setScale(vp.h * T.renderer.getPixelRatio(), T.fov);
-}
-
-// ---------------------------------------------------------------- look-and-feel themes (mockups)
-
-const urlTheme = new URLSearchParams(location.search).get('theme');
-const savedTheme = urlTheme ?? store.get('unfill-theme');
-let themeName: ThemeName = savedTheme && savedTheme in THEMES ? (savedTheme as ThemeName) : 'terrarium';
-let theme: Theme = THEMES[themeName];
-
-function applyTheme(name: ThemeName): void {
-  themeName = name;
-  theme = THEMES[name];
-  theme.sand.forEach((h, i) => SAND[i].set(h));
-  T.blockLook = { radius: theme.block.radius, segments: theme.block.segments };
-  blocks.setGeometry(T.blockGeometry());
-  blocks.applyTheme(theme);
-  T.applyTheme(theme);
-  document.body.dataset.theme = name;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme.chrome);
-  for (const b of document.querySelectorAll<HTMLButtonElement>('button[data-theme]')) b.setAttribute('aria-pressed', String(b.dataset.theme === name));
-}
-for (const b of document.querySelectorAll<HTMLButtonElement>('button[data-theme]')) {
-  b.onclick = () => {
-    store.set('unfill-theme', b.dataset.theme!);
-    applyTheme(b.dataset.theme as ThemeName);
-    warmup();
-  };
-}
-
-// ---------------------------------------------------------------- layouts (UI mockups)
-
-type UiName = 'classic' | 'board' | 'hero' | 'cozy';
-const UI_VIEWS: Record<UiName, View> = {
-  classic: CLASSIC_VIEW,
-  /** Head-on, the glass edge to edge, like a classic block puzzle board. */
-  board: { pitchDeg: 6, yawDeg: 0, box: 'tight', bottleAt: 'right', bottleScale: 0.6 },
-  /** The bottle front and center above the tray, with the level and moves either side of it. */
-  hero: { pitchDeg: 7, yawDeg: 0, box: 'tight', bottleAt: 'center', bottleScale: 0.72 },
-  /** The tilted terrarium, cropped close so the tray fills the screen. */
-  cozy: { pitchDeg: 15, yawDeg: 6, box: 'tight', bottleAt: 'right', bottleScale: 0.66 },
-};
-const urlUi = new URLSearchParams(location.search).get('ui');
-// Will picked Bottle top, so it's the default now
-const savedUi = urlUi ?? store.get('unfill-ui');
-let ui: UiName = savedUi && savedUi in UI_VIEWS ? (savedUi as UiName) : 'hero';
-
-function applyUi(name: UiName): void {
-  ui = name;
-  document.body.dataset.ui = name;
-  T.view = UI_VIEWS[name];
-  bottle.setScale(T.view.bottleScale);
-  placeBottle();
-  layout();
-  for (const b of document.querySelectorAll<HTMLButtonElement>('[data-ui]')) b.setAttribute('aria-pressed', String(b.dataset.ui === name));
-}
-for (const b of document.querySelectorAll<HTMLButtonElement>('[data-ui]')) {
-  b.onclick = () => {
-    store.set('unfill-ui', b.dataset.ui!);
-    applyUi(b.dataset.ui as UiName);
-  };
 }
 
 // ---------------------------------------------------------------- settings
@@ -1187,9 +1063,7 @@ $('startBtn').onclick = () => {
 window.addEventListener('resize', layout);
 window.visualViewport?.addEventListener('resize', layout);
 
-applyTheme(themeName);
 startBoard(Number(new URLSearchParams(location.search).get('tray')) || 1, true);
-applyUi(ui);
 warmup();
 
 /**
@@ -1239,8 +1113,6 @@ requestAnimationFrame(frame);
     setTier(TIERS[name]);
   },
   start: (num: number) => startBoard(num, true),
-  setUi: (name: UiName) => applyUi(name),
-  setTheme: (name: ThemeName) => applyTheme(name),
   dismissIntro: () => $('startBtn').click(),
   /** Freeze the scene clock (seconds) for frame-exact screenshots; null resumes. */
   freeze: (t: number | null) => {
