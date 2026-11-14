@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#F6E6D6" />
+    <title>Unfill rules lab</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@600;700;800&display=swap"
+    />
+  </head>
+  <body>
+    <main class="app">
+      <header class="top">
+        <div class="title">
+          <h1>Unfill</h1>
+          <span id="boardLabel">Rules lab</span>
+        </div>
+        <div class="count" aria-live="polite">
+          <strong id="lifts">0</strong>
+          <small id="liftsLabel">lifts</small>
+          <small id="left" class="muted">0 blocks left</small>
+        </div>
+      </header>
+
+      <div class="rule" role="group" aria-label="Sand rule">
+        <button id="ruleRepose" class="seg" aria-pressed="true">Slopes</button>
+        <button id="ruleColumn" class="seg" aria-pressed="false">Columns</button>
+      </div>
+      <p class="ruleHelp" id="ruleHelp"></p>
+
+      <div class="stage" id="stage">
+        <canvas id="board" aria-label="Unfill test board"></canvas>
+        <div class="overlay" id="overlay" hidden>
+          <div class="card">
+            <h2 id="ovTitle">Tray emptied</h2>
+            <p id="ovText"></p>
+            <div class="row" id="ovButtons"></div>
+          </div>
+        </div>
+        <div class="toast" id="toast" role="status"></div>
+      </div>
+
+      <p class="how" id="how">Tap a block to lift its group. Hold to preview.</p>
+
+      <div class="controls">
+        <button id="undo">Undo</button>
+        <button id="restart">Restart</button>
+        <button id="newBoard" class="primary">New board</button>
+      </div>
+      <details class="results" id="results">
+        <summary>Board size, sound and rule comparison</summary>
+        <div class="controls small">
+          <label class="select"
+            >Size
+            <select id="size"></select>
+          </label>
+          <button id="sound" aria-pressed="true">Sound on</button>
+        </div>
+        <p class="muted" id="thisBoard"></p>
+        <table>
+          <thead>
+            <tr><th>Board</th><th>Slopes</th><th>Columns</th></tr>
+          </thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+        <div class="row">
+          <button id="copyResults">Copy results</button>
+          <button id="clearResults">Clear</button>
+        </div>
+      </details>
+    </main>
+    <script type="module" src="/src/app/lab/main.ts"></script>
+  </body>
+</html>
