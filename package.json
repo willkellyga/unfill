@@ -15,6 +15,7 @@
     "economy:sample": "tsx gen/economy/sample.ts",
     "economy:tune": "tsx gen/economy/tune.ts",
     "build:single": "ARTIFACT=1 vite build && node scripts/single-file.mjs",
+    "build:concepts": "ARTIFACT=concepts vite build && ARTIFACT=concepts node scripts/single-file.mjs",
     "perf": "node scripts/perf.cjs"
   },
   "devDependencies": {

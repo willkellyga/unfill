@@ -5,7 +5,9 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const dir = 'dist-single';
-let html = readFileSync(join(dir, 'index.html'), 'utf8');
+const page = process.env.ARTIFACT === 'concepts' ? 'concepts' : 'index';
+const out = page === 'concepts' ? 'concepts' : 'unfill';
+let html = readFileSync(join(dir, `${page}.html`), 'utf8');
 const read = (href) => readFileSync(join(dir, href.replace(/^\.\//, '')), 'utf8');
 
 const css = [];
@@ -26,8 +28,8 @@ const script = `<script type="module">\n${js.join('\n').replace(/<\/script/gi, '
 const head = /<head>([\s\S]*?)<\/head>/.exec(html)[1];
 const body = /<body>([\s\S]*?)<\/body>/.exec(html)[1];
 const full = `<!doctype html>\n<html lang="en">\n<head>${head}${style}\n</head>\n<body>${body}${script}\n</body>\n</html>\n`;
-writeFileSync(join(dir, 'unfill.html'), full);
-console.log(`dist-single/unfill.html: ${(full.length / 1024).toFixed(0)} KB`);
+writeFileSync(join(dir, `${out}.html`), full);
+console.log(`dist-single/${out}.html: ${(full.length / 1024).toFixed(0)} KB`);
 
 // The same page without the document wrapper, for a Claude artifact (it adds its own <html>, <head>, charset and
 // viewport). The title and the fonts stay at the top.
@@ -35,4 +37,4 @@ const keep = head
   .split('\n')
   .filter((l) => !/<meta charset|<meta name="viewport"/.test(l))
   .join('\n');
-writeFileSync(join(dir, 'artifact.html'), `${keep.trim()}\n${style}\n${body.trim()}\n${script}\n`);
+writeFileSync(join(dir, page === 'concepts' ? 'concepts-artifact.html' : 'artifact.html'), `${keep.trim()}\n${style}\n${body.trim()}\n${script}\n`);
