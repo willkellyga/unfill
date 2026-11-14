@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#f6e2cd" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>Unfill</title>
@@ -150,6 +150,22 @@
 
     <div class="intro home" id="homeCard" hidden role="dialog" aria-modal="true" aria-labelledby="homeTitle">
       <div class="introInner homeInner" id="homeInner"></div>
+    </div>
+
+    <div class="upright" id="upright" hidden role="dialog" aria-modal="true" aria-labelledby="uprightTitle" aria-describedby="uprightText">
+      <div class="uprightInner">
+        <svg class="uprightPhone" viewBox="0 0 120 120" aria-hidden="true">
+          <path class="uprightArc" d="M26 44a40 40 0 0 1 36-24M94 76a40 40 0 0 1-36 24"/>
+          <path class="uprightArc" d="M56 13l7 7-8 6M64 107l-7-7 8-6"/>
+          <g class="uprightBody">
+            <rect x="42" y="24" width="36" height="72" rx="9"/>
+            <rect class="uprightScreen" x="46.5" y="32" width="27" height="56" rx="3"/>
+            <path class="uprightSand" d="M49.5 84h21v-7h-7v-5h-7v6h-7z"/>
+          </g>
+        </svg>
+        <h2 id="uprightTitle">Turn your phone upright</h2>
+        <p id="uprightText">Unfill plays standing tall. Your tray is waiting just as you left it.</p>
+      </div>
     </div>
 
     <script type="module" src="/src/app/game/main.ts"></script>
