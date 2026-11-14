@@ -7,12 +7,13 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>Unfill</title>
     <meta name="claude:viewport-fit-sides" content="cover" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@600;700;800&display=swap"
-    />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Unfill" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="description" content="A cozy sand puzzle: lift the colors out of the tray, fill a bottle for your shelf." />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
   </head>
   <body>
     <canvas id="scene" aria-label="A glass tray of colored sand blocks. Tap a block to lift its group."></canvas>
@@ -37,14 +38,14 @@
     <output class="fps" id="fps" hidden></output>
 
     <footer class="foot" id="bar">
-      <p class="how" id="hint" role="status">Tap a block to lift its group. Hold to preview.</p>
+      <p class="how" id="hint" role="status">Tap a block to lift its group.</p>
       <div class="controls">
         <button id="shelfBtn" type="button" aria-label="Bottle shelf"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2.8h4M10.4 2.8v3.4L8.2 9a2.2 2.2 0 0 0-.5 1.4V19a2 2 0 0 0 2 2h4.6a2 2 0 0 0 2-2v-8.6c0-.5-.2-1-.5-1.4l-2.2-2.8V2.8"/><path d="M7.8 14.5h8.4"/></svg><span class="lbl">Shelf</span><span class="badge" id="shelfCount" hidden>0</span></button>
         <div class="movesPill" id="movesPill" aria-live="polite"><strong id="moves">0</strong><small id="movesLabel">moves left</small></div>
         <button id="gear" type="button" aria-label="Settings" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.6M12 18.9v2.6M21.5 12h-2.6M5.1 12H2.5M18.7 5.3l-1.8 1.8M7.1 16.9l-1.8 1.8M18.7 18.7l-1.8-1.8M7.1 7.1 5.3 5.3"/><circle cx="12" cy="12" r="6.6"/></svg><span class="lbl">Settings</span></button>
       </div>
       <details class="more" id="more">
-        <summary>Sound, quality and runs</summary>
+        <summary>Settings</summary>
         <div class="morePanel">
           <div class="setting">
             <span>Sound</span>
@@ -53,6 +54,23 @@
           <div class="setting">
             <span>Room sounds <small>quiet room tone and a distant bird</small></span>
             <button id="setAmbient" type="button" role="switch" aria-checked="true" class="switch" aria-label="Room sounds"></button>
+          </div>
+          <div class="setting">
+            <span>Vibration <small id="vibeNote">a light tap with each lift</small></span>
+            <button id="setVibe" type="button" role="switch" aria-checked="true" class="switch" aria-label="Vibration"></button>
+          </div>
+          <div class="setting">
+            <span>Reduce motion <small id="motionNote">sand fades into place instead of pouring</small></span>
+            <button id="setMotion" type="button" role="switch" aria-checked="false" class="switch" aria-label="Reduce motion"></button>
+          </div>
+          <div class="setting col">
+            <span>Color patterns <small>a pattern on each color of sand, to tell them apart without color</small></span>
+            <div class="segs three" role="group" aria-label="Color patterns">
+              <button type="button" data-pat="off">Off</button>
+              <button type="button" data-pat="fifth">5th color</button>
+              <button type="button" data-pat="all">All colors</button>
+            </div>
+            <div class="patKey" id="patKey" aria-hidden="true"></div>
           </div>
           <div class="setting col">
             <span>Quality</span>
@@ -63,6 +81,20 @@
               <button type="button" data-tier="high">High</button>
             </div>
             <small id="tierNote"></small>
+          </div>
+          <div class="setting col" id="installRow">
+            <span>Home screen <small id="installNote"></small></span>
+          </div>
+          <div class="setting col">
+            <span>Move your progress <small>copy a code here, then paste it in the other place (Safari or the home-screen app); it also works as a backup</small></span>
+            <div class="segs two">
+              <button id="copyProgress" type="button">Copy my code</button>
+              <button id="pasteToggle" type="button" aria-expanded="false">Paste a code</button>
+            </div>
+            <div class="paste" id="pasteBox" hidden>
+              <textarea id="pasteCode" rows="3" placeholder="Paste a code that starts with UNFILL1:" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+              <button id="loadProgress" type="button" class="primary">Load this progress</button>
+            </div>
           </div>
           <div class="setting">
             <span>Show frame rate</span>

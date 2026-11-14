@@ -23,7 +23,11 @@ const style = `<style>\n${css.join('\n')}\n</style>`;
 // `</script` inside the bundle would end the inline script early
 const script = `<script type="module">\n${js.join('\n').replace(/<\/script/gi, '<\\/script')}\n</script>`;
 
-const head = /<head>([\s\S]*?)<\/head>/.exec(html)[1];
+// The home-screen app's manifest and icons aren't part of a one-file page (it can't be installed as an app).
+const head = /<head>([\s\S]*?)<\/head>/.exec(html)[1]
+  .split('\n')
+  .filter((l) => !/rel="(manifest|icon|apple-touch-icon)"|mobile-web-app/.test(l))
+  .join('\n');
 const body = /<body>([\s\S]*?)<\/body>/.exec(html)[1];
 const full = `<!doctype html>\n<html lang="en">\n<head>${head}${style}\n</head>\n<body>${body}${script}\n</body>\n</html>\n`;
 writeFileSync(join(dir, 'unfill.html'), full);

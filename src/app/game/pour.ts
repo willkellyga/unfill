@@ -41,7 +41,12 @@ export interface PourPlan {
   end: number;
   /** When each column's last block finishes landing, for the soft pat. */
   columnEnds: number[];
+  /** Reduced motion: every falling block fades out where it was and fades in where it lands, all at once. */
+  quick?: boolean;
 }
+
+/** Reduced motion: the whole settle takes this long. */
+export const QUICK_POUR = 0.24;
 
 export const FIRM = 0.14;
 
@@ -55,6 +60,7 @@ export function planPour(
   group: readonly number[],
   moves: readonly { id: number; from: number; to: number }[],
   start: number,
+  quick = false,
 ): PourPlan {
   const { cols, cells } = before;
   const lifted = new Set(group);
@@ -90,6 +96,19 @@ export function planPour(
   for (let c = 0; c < cols; c++) {
     const list = byCol[c].sort((a, z) => z.fromRow - a.fromRow); // bottom first
     if (!list.length) continue;
+    if (quick) {
+      // a cross-fade: out at the source over the first two thirds, in at the landing cell over the last two
+      for (const b of list) {
+        b.d0 = start;
+        b.d1 = start + QUICK_POUR * 0.66;
+        b.f0 = start + QUICK_POUR * 0.33;
+        b.f1 = start + QUICK_POUR;
+        blocks.push(b);
+      }
+      columnEnds.push(start + QUICK_POUR);
+      end = Math.max(end, start + QUICK_POUR);
+      continue;
+    }
     const tau = Math.min(0.13, Math.max(0.05, 0.55 / list.length));
     // columns nearer the lifted sand start a hair earlier, so the pour ripples outward
     let t = start + 0.018 * Math.abs(c - mid);
@@ -107,5 +126,5 @@ export function planPour(
     columnEnds.push(colEnd);
     end = Math.max(end, colEnd + FIRM);
   }
-  return { blocks, still, colorOf, start, end, columnEnds };
+  return { blocks, still, colorOf, start, end, columnEnds, quick };
 }

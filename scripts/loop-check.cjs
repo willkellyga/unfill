@@ -5,6 +5,7 @@
 // Fails on any page error or broken invariant.
 //
 // Usage: npm run build && npx vite preview --port 4173 &  then  node scripts/loop-check.cjs [trays] [seed]
+// Optional SETTINGS env: localStorage settings as JSON, e.g. SETTINGS='{"unfill-motion":"1","unfill-patterns":"all"}'.
 const { chromium } = require('playwright');
 
 const TRAYS = Number(process.argv[2] || 30);
@@ -54,7 +55,12 @@ const pointsFor = (lifts, par) => {
     }));
 
   await page.goto(URL);
-  await page.evaluate(() => localStorage.clear());
+  // SETTINGS='{"unfill-motion":"1"}' plays with those settings (e.g. reduced motion, all color patterns)
+  const settings = JSON.parse(process.env.SETTINGS || '{}');
+  await page.evaluate((st) => {
+    localStorage.clear();
+    for (const [k, v] of Object.entries(st)) localStorage.setItem(k, v);
+  }, settings);
   await page.goto(URL);
   await page.waitForFunction(() => window.unfill);
   await page.click('#startBtn');
