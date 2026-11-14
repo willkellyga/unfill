@@ -62,6 +62,12 @@ Details, research and the playtest plan: [gen/tuning/README.md](gen/tuning/READM
   The camera is reframed whenever the canvas's real size changes, checked every frame, because iPhone can fire resize
   before a rotation settles. Pinch and double-tap zoom are off (viewport tag, `touch-action`, and Safari's gesture
   events). `npm run orientation-check` turns an emulated iPhone sideways and back, with and without resize events.
+- **Header and lesson** (Nov 14): the header is three slots (left, center, right); the moves card sits at the top
+  center over the bottle, with this level's par as a row of slots that fill with each lifted color (`hud.ts`;
+  `?readout=countdown` or `labels` previews the other mocks). A new player's first Begin plays a two-tray lesson
+  (`src/core/tutorial.ts`): a guided tray (tap, sand falls, colors join), then a free tray against par that can't be
+  lost. It isn't scored, shelved, saved or sent to the playtest sheet. Settings > How to play replays it mid-run;
+  `?lesson` forces it. `npm run lesson-check` plays it in a headless iPhone.
 - **Hosting**: `.github/workflows/pages.yml` publishes `dist/` to GitHub Pages on every push to main, once Pages is
   switched on (Settings > Pages > Source: GitHub Actions). The Claude artifact can't be installed or play offline: it
   runs inside claude.ai's frame, where a service worker can't run.
@@ -206,6 +212,7 @@ npm run build:single   # the game as one self-contained HTML file, dist-single/u
 npm run perf       # after a build and `npx vite preview --port 4173`: per-frame CPU time on a slowed CPU
 npm run loop-check # after a build and `npx vite preview --port 4173`: clears 30 trays in a row through real taps
 npm run orientation-check  # same setup: sideways card on phones, and the tray framed right after turning back
+npm run lesson-check  # same setup: the first-play lesson, replay from Settings, and the run coming back untouched
 ```
 
 To play on a phone, keep `npm run dev` running and open the "Network" address it prints

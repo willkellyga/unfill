@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import {
   EMPTY,
   Session,
+  TutorialSession,
   countBlocks,
   groupAt,
   type Board,
@@ -35,6 +36,7 @@ import { isLandscape, isPhone, lockPortrait, preventZoom, resetZoom } from './or
 import { SLOW_FRAME_MS, TIERS, type Tier, type TierName } from './quality';
 import { BLOCK, BOTTLE_SCALE, Terrarium } from './scene';
 import { renderShelf } from './shelf';
+import { goalHtml, goalLabel, parseReadout } from './hud';
 
 // ---------------------------------------------------------------- setup
 
@@ -206,6 +208,20 @@ if (!S) {
   S.next();
 }
 
+// ---------------------------------------------------------------- the first-play lesson (state; the rest is further down)
+
+const LESSON_KEY = 'unfill-lesson-done';
+/** The lesson being played, swapped in for the run's session (which waits in `runS`), or null. */
+let lesson: TutorialSession | null = null;
+let runS: Session | null = null;
+// players from before the lesson existed already know how to play
+if (!ephemeral && store.get(LESSON_KEY) === null && (shelfAtLoad.length > 0 || (resumed && (S.n > 1 || S.taps.length > 0))))
+  store.set(LESSON_KEY, '1');
+/** New players get the lesson when they tap Begin. `?lesson` shows it any time; test links and scripted browsers skip it. */
+const firstPlay = params.has('lesson') || (!ephemeral && !navigator.webdriver && store.get(LESSON_KEY) === null);
+/** The run's session, even while the lesson is on screen. */
+const run = (): Session => runS ?? S;
+
 // ---------------------------------------------------------------- points and the high score
 
 const BEST_KEY = 'unfill-best';
@@ -232,6 +248,7 @@ function showOver(): void {
 }
 
 function newRun(): void {
+  if (lesson) endLesson();
   // leaving a level part way through for a new run (from Settings)
   if (!S.over && !S.cleared) logLevelEnd('quit');
   $('over').hidden = true;
@@ -244,15 +261,15 @@ function newRun(): void {
 }
 
 function persist(): void {
-  if (!ephemeral) store.set(SAVE_KEY, JSON.stringify(S.toSave()));
+  if (!ephemeral && !lesson) store.set(SAVE_KEY, JSON.stringify(S.toSave()));
 }
 function persistShelf(): void {
-  if (!ephemeral) store.set(SHELF_KEY, JSON.stringify(S.shelf));
+  if (!ephemeral && !lesson) store.set(SHELF_KEY, JSON.stringify(S.shelf));
 }
 
 /** The level on screen ended (cleared, out of moves, or left for a new run): its row goes to the playtest outbox. */
 function logLevelEnd(outcome: Outcome, points?: number): void {
-  if (!playtest) return;
+  if (!playtest || lesson) return;
   const e = S.pick.entry;
   const st = installState();
   playtest.levelEnded({
@@ -300,9 +317,10 @@ function showBoard(): void {
   bottle.settleAll();
   bottle.update(now());
   updateHud();
+  syncCoach();
   readyAt = performance.now();
   persist();
-  if (!S.over) playtest?.levelStarted(S.seed, S.n, S.pick.entry.id, S.pool.atBoardStart);
+  if (!S.over && !lesson) playtest?.levelStarted(S.seed, S.n, S.pick.entry.id, S.pool.atBoardStart);
 }
 
 /**
@@ -321,6 +339,7 @@ function startBoard(num: number, fresh: boolean): void {
 
 /** The level after a clear: leftover moves carry over and the new tray's sand pours in from above. */
 function nextLevel(): void {
+  if (lesson && lesson.isLast) return finishLesson();
   const prev = { cols: S.cur.board.cols, rows: S.cur.board.rows, colors: S.pick.entry.colors };
   const { before } = S.next();
   showBoard();
@@ -328,7 +347,7 @@ function nextLevel(): void {
   bottle.enterAt(t);
   fillIn = planFillIn(S.cur.board, t + 0.15);
   countUp(before, S.pool.moves, 0.9);
-  levelBanner(prev);
+  if (!lesson) levelBanner(prev);
 }
 
 // ---------------------------------------------------------------- the next level pours in
@@ -493,7 +512,7 @@ function doLift(cell: number): void {
 function afterLift(out: { keepsake?: Keepsake | null }): void {
   if (out.keepsake) logLevelEnd('clear', out.keepsake.points);
   else if (S.over) logLevelEnd('out');
-  if (out.keepsake) {
+  if (out.keepsake && !lesson) {
     persistShelf();
     if (S.score > best) {
       best = S.score;
@@ -761,14 +780,14 @@ function maybeCork(t: number): void {
   if (!reduced) launchSparkle(bottle.corkSeatTime);
   clearBanner();
   window.setTimeout(() => {
-    if (!S.cleared) return;
+    if (!S.cleared || lesson) return;
     clearedBanner(S.shelf[S.shelf.length - 1]);
     countUp(shownScore, S.score, 0.9, 'score');
     shownScore = S.score;
   }, 450);
   // the corked bottle slides off along the rail toward the shelf, then the next tray pours in
   bottle.exitAt(bottle.corkSeatTime + 0.75);
-  window.setTimeout(bumpShelf, (bottle.corkSeatTime + 1.1 - t) * 1000);
+  if (!lesson) window.setTimeout(bumpShelf, (bottle.corkSeatTime + 1.1 - t) * 1000);
   pendingNext = bottle.corkSeatTime + 1.2;
 }
 
@@ -842,7 +861,7 @@ function bumpShelf(): void {
 function openShelf(): void {
   audio.unlock();
   more.open = false;
-  renderShelf($('shelfGrid'), $('shelfNote'), $('shelfDetail'), S.shelf);
+  renderShelf($('shelfGrid'), $('shelfNote'), $('shelfDetail'), run().shelf);
   $('shelf').hidden = false;
   $('shelfClose').focus();
 }
@@ -1029,7 +1048,10 @@ function frame(): void {
   else if (fillIn) drawFillIn(fillIn, t);
   else {
     const hv = hover ? new Set(hover) : null;
-    drawSettled(S.cur.board, (i) => (hv && hv.has(i) ? 0.22 : 0));
+    // the lesson's next group to lift breathes softly
+    const tg = lesson && !S.cleared ? new Set(lesson.target() ?? []) : null;
+    const breathe = reduced ? 0.2 : 0.14 + 0.1 * Math.sin(t * 4);
+    drawSettled(S.cur.board, (i) => (hv && hv.has(i) ? 0.22 : tg && tg.has(i) ? breathe : 0));
   }
   drawFlights(t);
   blocks.end(0.5);
@@ -1040,7 +1062,11 @@ function frame(): void {
   T.tick(reduced ? 0 : t);
   maybeCork(t);
   maybeNextLevel(t);
-  if (S.over && !overShown && !pour && !flights.length && !fillIn) showOver();
+  if (S.over && !overShown && !pour && !flights.length && !fillIn) {
+    if (lesson) lessonOutOfMoves();
+    else showOver();
+  }
+  placeHand();
   T.render();
   const cost = performance.now() - t0;
   jsCost = jsCost * 0.95 + cost * 0.05;
@@ -1099,7 +1125,11 @@ canvas.addEventListener('pointerup', (e) => {
   const target = press.cell;
   const ok = cell !== null && press.group.includes(cell);
   press = null;
-  if (ok) doLift(target);
+  if (!ok) return;
+  // a guided lesson step only takes the group it's pointing at
+  const tg = lesson?.target();
+  if (tg && !tg.includes(target)) return nudgeCoach();
+  doLift(target);
 });
 canvas.addEventListener('pointercancel', () => {
   press = null;
@@ -1111,17 +1141,24 @@ canvas.addEventListener('pointerleave', () => {
 
 const fmt = (v: number) => v.toLocaleString('en-US');
 
+/** How the par line under the moves count reads (hud.ts); `?readout=` previews the other mocks. */
+const readout = parseReadout(params.get('readout'));
+document.documentElement.dataset.readout = readout;
+
 function updateHud(): void {
   if (!$('moves').classList.contains('pour')) $('moves').textContent = String(S.pool.moves);
   $('movesLabel').textContent = S.pool.moves === 1 ? 'move left' : 'moves left';
-  $('levelNum').textContent = `Level ${S.n}`;
-  // moves made on this tray next to its par
-  $('used').textContent = String(S.lifts);
-  $('par').textContent = String(S.par);
-  $('levelLabel').classList.toggle('over', S.lifts > S.par);
+  $('levelWord').textContent = lesson ? 'lesson' : 'level';
+  $('levelNum').textContent = String(S.n);
+  // the moves made on this tray against its par, each as the color it lifted
+  const goal = { lifted: S.taps.map((cell, k) => S.history[k].board.cells[cell]), par: S.par, cleared: S.cleared };
+  $('goal').innerHTML = goalHtml(readout, goal);
+  $('goal').setAttribute('aria-label', goalLabel(goal));
+  $('movesPill').dataset.lifts = String(S.lifts);
+  $('movesPill').classList.toggle('overPar', S.lifts > S.par);
   if (!$('score').classList.contains('pour')) $('score').textContent = fmt(shownScore);
-  $('best').textContent = `best ${fmt(Math.max(best, S.score))}`;
-  $('movesPill').classList.toggle('low', S.pool.moves <= 3 && !S.cleared);
+  $('best').textContent = `best ${fmt(Math.max(best, run().score))}`;
+  $('movesPill').classList.toggle('low', S.pool.moves <= 3 && !S.cleared && !lesson);
   setHint('');
 }
 
@@ -1149,12 +1186,14 @@ function layout(): void {
   framedFor = viewKey();
   T.renderer.setPixelRatio(Math.min(tier.maxDpr, window.devicePixelRatio || 1));
   const view = canvas.getBoundingClientRect();
-  const hud = $('hud').getBoundingClientRect();
   const bar = $('bar').getBoundingClientRect();
-  // the bottle sits centered on top and the header's chips sit either side of it, so the scene can use their height
-  const top = hud.top - view.top + parseFloat(getComputedStyle($('hud')).paddingTop);
+  // the bottle stands centered under the moves card, with the side chips beside its neck
+  const top = $('hudCenter').getBoundingClientRect().bottom - view.top + 4;
   // measured against the canvas, not window.innerHeight, which iOS can report stale for a moment after a rotation
-  T.frame({ top: Math.max(8, top), bottom: view.bottom - bar.top + 6, side: 4 });
+  // during the lesson the speech bubble sits over the buttons, so the tray stays clear of it
+  const coach = $('coach');
+  const edge = coach.hidden ? bar.top : Math.min(bar.top, coach.getBoundingClientRect().top);
+  T.frame({ top: Math.max(8, top), bottom: view.bottom - edge + 6, side: 4 });
   const vp = T.viewport;
   grains.setScale(vp.h * T.renderer.getPixelRatio(), T.fov);
   // banners sit in the middle of the tray
@@ -1377,9 +1416,9 @@ $<HTMLInputElement>('testerName').addEventListener('change', (e) => {
 
 $('copyProgress').onclick = async () => {
   const code = encodeProgress({
-    save: S.toSave(),
-    shelf: S.shelf,
-    best: Math.max(best, S.score),
+    save: run().toSave(),
+    shelf: run().shelf,
+    best: Math.max(best, run().score),
     device: playtest?.device,
     name: playtest?.name || undefined,
   });
@@ -1516,6 +1555,8 @@ function loadTimings(): TimingRow[] {
 
 /** A tap: thinking time is how long the tray sat ready before it. */
 function logTap(): void {
+  // lesson taps aren't play: not timed, not sent
+  if (lesson) return;
   const at = performance.now();
   const think = Math.round(at - readyAt);
   playtest?.tapped(think);
@@ -1526,6 +1567,7 @@ function logTap(): void {
 /** The tray is playable again: the pour time is known, so the tap's row is saved. */
 function markReady(): void {
   readyAt = performance.now();
+  syncCoach();
   if (!pendingTap) return;
   const { at, ...row } = pendingTap;
   row.anim = Math.round(readyAt - at);
@@ -1547,6 +1589,170 @@ function timingSummary(): { taps: number; think: number; anim: number } | null {
   };
 }
 
+// ---------------------------------------------------------------- the first-play lesson (core/tutorial.ts)
+
+/**
+ * Two little trays before level 1 for a new player, and again from Settings. The run's session waits in `runS`
+ * untouched (and its save stays as it was), the lesson's session plays in its place, then the run comes back.
+ */
+function startLesson(): void {
+  if (lesson) return;
+  pendingNext = null;
+  fastForward();
+  clearBanner();
+  more.open = false;
+  closeShelf();
+  $('over').hidden = true;
+  runS = S;
+  lesson = new TutorialSession();
+  S = lesson;
+  overShown = false;
+  lesson.begin(1);
+  document.documentElement.classList.add('lesson');
+  $('coach').hidden = false;
+  showBoard();
+  const t = now();
+  bottle.enterAt(t);
+  fillIn = planFillIn(S.cur.board, t + 0.15);
+}
+
+/** Lesson 2's bottle is away: the closing card, then back to the run. */
+function finishLesson(): void {
+  if (!lesson) return;
+  $('coach').hidden = true;
+  $('tapHand').hidden = true;
+  const r = runS!;
+  $('lessonGo').textContent = r.lifts === 0 && r.n === 1 ? 'Start level 1' : `Back to level ${r.n}`;
+  $('lessonDone').hidden = false;
+  $('lessonGo').focus();
+}
+
+/** Back to the run, where it was. */
+function endLesson(): void {
+  if (!lesson) return;
+  if (!ephemeral) store.set(LESSON_KEY, '1');
+  pendingNext = null;
+  fastForward();
+  clearTimeout(coachTimer);
+  lesson = null;
+  S = runS!;
+  runS = null;
+  document.documentElement.classList.remove('lesson');
+  $('coach').hidden = true;
+  $('tapHand').hidden = true;
+  $('lessonDone').hidden = true;
+  overShown = false;
+  showBoard();
+  const t = now();
+  bottle.enterAt(t);
+  if (!S.over) {
+    fillIn = planFillIn(S.cur.board, t + 0.15);
+    if (S.lifts === 0) levelBanner(null);
+  }
+}
+
+/** Lesson 2 ran dry: say what that means in a run, then pour the tray in again. */
+let coachTimer = 0;
+function lessonOutOfMoves(): void {
+  overShown = true;
+  setCoach('<b>Out of moves!</b> In a run, that’s the end of the run. Let’s pour this tray in again.');
+  clearTimeout(coachTimer);
+  coachTimer = window.setTimeout(() => {
+    if (!lesson) return;
+    overShown = false;
+    lesson.begin(lesson.n);
+    showBoard();
+    fillIn = planFillIn(S.cur.board, now() + 0.15);
+  }, 2600);
+}
+
+function setCoach(html: string): void {
+  const el = $('coachText');
+  if (el.innerHTML === html) return;
+  el.innerHTML = html;
+  const c = $('coach');
+  c.classList.remove('fresh');
+  void c.offsetWidth;
+  c.classList.add('fresh');
+}
+
+const COLOR_NAMES = ['pink', 'green', 'lilac', 'yellow', 'blue'];
+
+/** What the speech bubble says, from where the lesson is. Called whenever the tray settles. */
+function syncCoach(): void {
+  const L = lesson;
+  $('movesPill').classList.toggle('spot', !!L && L.n === 2 && L.lifts === 0 && !S.cleared);
+  if (!L || overShown) return;
+  const target = L.target();
+  const color = target ? COLOR_NAMES[S.cur.board.cells[target[0]]] : '';
+  if (L.n === 1) {
+    if (S.cleared) setCoach('Every tray you empty fills a bottle for your shelf.');
+    else if (L.lifts === 0) setCoach(`Tap the <b>${color}</b> sand to lift it out of the tray.`);
+    else if (L.lifts === 1)
+      setCoach(`The sand above falls into the gap, and touching ${color} joins into one piece. Lift the <b>${color}</b>.`);
+    else setCoach(`Now the <b>${color}</b>. Empty the tray to fill the bottle.`);
+    return;
+  }
+  const over = L.lifts - L.par;
+  if (S.cleared) setCoach(over < 0 ? '<b>Under par!</b> That scores a bonus.' : over === 0 ? '<b>Right on par.</b> Nicely done.' : 'Cleared! Over par still scores, just less.');
+  else if (L.lifts === 0)
+    setCoach(`Each lift uses a move. <b>Par</b> is the goal: empty this tray in <b>${L.par}</b> lifts or fewer. Your lifts show at the top.`);
+  else if (S.pool.moves <= 2)
+    setCoach(
+      `${over > 0 ? 'That’s over par, and only' : 'Only'} <b>${S.pool.moves}</b> ${S.pool.moves === 1 ? 'move' : 'moves'} left! ` +
+        'In a run, running out with sand still in the tray ends the run.',
+    );
+  else if (over > 0) setCoach(`That’s over par. Keep going: it still counts, just for fewer points.`);
+  else setCoach('Tip: lifting one color can join up another. Fewer lifts, more points.');
+}
+
+/** A tap on the wrong sand during a guided step: the bubble gives a little shake. */
+function nudgeCoach(): void {
+  const c = $('coach');
+  c.classList.remove('nudge');
+  void c.offsetWidth;
+  c.classList.add('nudge');
+}
+
+/** The finger rests on the group to lift next, while the tray is still. */
+function placeHand(): void {
+  const hand = $('tapHand');
+  const target = lesson && !S.cleared && !pour && !fillIn && !flights.length && !overShown ? lesson.target() : null;
+  if (!target) {
+    if (!hand.hidden) hand.hidden = true;
+    return;
+  }
+  // the cell nearest the group's middle, so the finger lands on sand even for an L or a cup
+  const cols = T.cols;
+  const cx = target.reduce((a, i) => a + T.cellX(i % cols), 0) / target.length;
+  const cy = target.reduce((a, i) => a + T.cellY((i / cols) | 0), 0) / target.length;
+  let best = target[0];
+  let bd = Infinity;
+  for (const i of target) {
+    const d = Math.hypot(T.cellX(i % cols) - cx, T.cellY((i / cols) | 0) - cy);
+    if (d < bd - 1e-6) {
+      bd = d;
+      best = i;
+    }
+  }
+  const p = T.toScreen(new THREE.Vector3(T.cellX(best % cols), T.cellY((best / cols) | 0), BLOCK / 2));
+  hand.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y)}px)`;
+  if (hand.hidden) hand.hidden = false;
+}
+
+$('coachSkip').onclick = () => {
+  audio.unlock();
+  endLesson();
+};
+$('lessonGo').onclick = () => {
+  audio.unlock();
+  endLesson();
+};
+$('replayLesson').onclick = () => {
+  audio.unlock();
+  startLesson();
+};
+
 // ---------------------------------------------------------------- buttons, start
 
 $('againBtn').onclick = () => {
@@ -1563,11 +1769,12 @@ $('startBtn').onclick = () => {
   audio.unlock();
   $('intro').hidden = true;
   if (tierChoice === 'auto') tierCheck = { until: performance.now() + 2000, sum: 0, count: 0 };
-  levelBanner(null);
+  if (firstPlay) startLesson();
+  else levelBanner(null);
   // time spent on the intro card isn't thinking time
   readyAt = performance.now();
   const st = installState();
-  playtest?.opened({ run: S.seed, n: S.n, installed: st.standalone, ios: st.ios, screen: `${screen.width}x${screen.height}` });
+  playtest?.opened({ run: run().seed, n: run().n, installed: st.standalone, ios: st.ios, screen: `${screen.width}x${screen.height}` });
 };
 initPwa(() => {
   syncInstall();
@@ -1642,6 +1849,12 @@ if (resumed && S.over) {
   $('introSmall').textContent = S.taps.length ? 'Your tray is just as you left it.' : 'The next tray is ready.';
   $('startBtn').textContent = 'Keep playing';
 }
+if (firstPlay && !(resumed && S.over)) {
+  $('introTitle').textContent = 'Unfill';
+  $('introText').textContent = 'Lift the colors out of a tray of sand to fill a bottle for your shelf.';
+  $('introSmall').textContent = 'First, a quick lesson: two little trays.';
+  $('startBtn').textContent = 'Begin';
+}
 warmup();
 
 /**
@@ -1709,4 +1922,6 @@ requestAnimationFrame(frame);
   fastForward: () => fastForward(),
   cellScreen: (i: number) => T.toScreen(new THREE.Vector3(T.cellX(i % T.cols), T.cellY((i / T.cols) | 0), BLOCK / 2)),
   grains: () => ({ busyUntil: grains.busyUntil, cap: grains.capacity }),
+  lesson: () => (lesson ? { n: S.n, target: lesson.target(), coach: $('coach').textContent, done: !$('lessonDone').hidden } : null),
+  startLesson: () => startLesson(),
 };

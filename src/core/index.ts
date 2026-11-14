@@ -12,3 +12,4 @@ export * from './economy';
 export * from './pacing';
 export * from './session';
 export * from './tuning';
+export * from './tutorial';
