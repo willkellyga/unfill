@@ -28,7 +28,7 @@ import { Grains } from './grains';
 import { SAND, sandColor, SAND_PITCH } from './palette';
 import { FIRM, fallTime, planPour, type PourPlan } from './pour';
 import { SLOW_FRAME_MS, TIERS, type Tier, type TierName } from './quality';
-import { BLOCK, Terrarium } from './scene';
+import { BLOCK, CLASSIC_VIEW, Terrarium, type View } from './scene';
 
 // ---------------------------------------------------------------- setup
 
@@ -859,7 +859,8 @@ document.addEventListener('keydown', (e) => {
 function updateHud(): void {
   if (!$('moves').classList.contains('pour')) $('moves').textContent = String(pool.moves);
   $('movesLabel').textContent = pool.moves === 1 ? 'move' : 'moves';
-  $('levelLabel').textContent = `Level ${n} · par ${pick.entry.par} · ${pick.entry.cols}×${pick.entry.rows}`;
+  $('levelLabel').innerHTML =
+    `<b>Level ${n}</b><span class="meta"> · par ${pick.entry.par}<span class="size"> · ${pick.entry.cols}×${pick.entry.rows}</span></span>`;
   const left = countBlocks(cur.board);
   $('left').textContent = `${left} ${left === 1 ? 'block' : 'blocks'} left`;
   $('hud').classList.toggle('empty', pool.moves === 0 && !cleared);
@@ -894,12 +895,46 @@ function nudgeButtons(): void {
 }
 
 function layout(): void {
-  const top = $('hud').getBoundingClientRect();
+  const hud = $('hud').getBoundingClientRect();
   const bar = $('bar').getBoundingClientRect();
   const H = window.innerHeight;
-  T.frame({ top: Math.max(8, top.bottom + 4), bottom: H - bar.top + 6, side: 10 });
+  // with the bottle centered on top, the header's chips sit either side of it, so the scene can use their height
+  const top = ui === 'hero' ? hud.top + parseFloat(getComputedStyle($('hud')).paddingTop) : hud.bottom + 4;
+  const side = ui === 'classic' ? 10 : 4;
+  T.frame({ top: Math.max(8, top), bottom: H - bar.top + 6, side });
   const vp = T.viewport;
   grains.setScale(vp.h * T.renderer.getPixelRatio(), T.fov);
+}
+
+// ---------------------------------------------------------------- layouts (UI mockups)
+
+type UiName = 'classic' | 'board' | 'hero' | 'cozy';
+const UI_VIEWS: Record<UiName, View> = {
+  classic: CLASSIC_VIEW,
+  /** Head-on, the glass edge to edge, like a classic block puzzle board. */
+  board: { pitchDeg: 6, yawDeg: 0, box: 'tight', bottleAt: 'right', bottleScale: 0.6 },
+  /** The bottle front and center above the tray, with the level and moves either side of it. */
+  hero: { pitchDeg: 7, yawDeg: 0, box: 'tight', bottleAt: 'center', bottleScale: 0.72 },
+  /** The tilted terrarium, cropped close so the tray fills the screen. */
+  cozy: { pitchDeg: 15, yawDeg: 6, box: 'tight', bottleAt: 'right', bottleScale: 0.66 },
+};
+const urlUi = new URLSearchParams(location.search).get('ui');
+let ui: UiName = ((urlUi ?? store.get('unfill-ui')) as UiName) in UI_VIEWS ? ((urlUi ?? store.get('unfill-ui')) as UiName) : 'classic';
+
+function applyUi(name: UiName): void {
+  ui = name;
+  document.body.dataset.ui = name;
+  T.view = UI_VIEWS[name];
+  bottle.setScale(T.view.bottleScale);
+  placeBottle();
+  layout();
+  for (const b of document.querySelectorAll<HTMLButtonElement>('[data-ui]')) b.setAttribute('aria-pressed', String(b.dataset.ui === name));
+}
+for (const b of document.querySelectorAll<HTMLButtonElement>('[data-ui]')) {
+  b.onclick = () => {
+    store.set('unfill-ui', b.dataset.ui!);
+    applyUi(b.dataset.ui as UiName);
+  };
 }
 
 // ---------------------------------------------------------------- settings
@@ -925,7 +960,12 @@ function syncSettings(): void {
 const more = $<HTMLDetailsElement>('more');
 more.addEventListener('toggle', () => {
   if (more.open) syncSettings();
+  $('gear').setAttribute('aria-expanded', String(more.open));
 });
+// the compact layouts open the settings from a gear button instead of the summary row
+$('gear').onclick = () => {
+  more.open = !more.open;
+};
 // tapping the tray closes the settings panel
 canvas.addEventListener('pointerdown', () => {
   more.open = false;
@@ -1055,6 +1095,7 @@ window.addEventListener('resize', layout);
 window.visualViewport?.addEventListener('resize', layout);
 
 startBoard(Number(new URLSearchParams(location.search).get('tray')) || 1, true);
+applyUi(ui);
 warmup();
 
 /**
@@ -1104,6 +1145,7 @@ requestAnimationFrame(frame);
     setTier(TIERS[name]);
   },
   start: (num: number) => startBoard(num, true),
+  setUi: (name: UiName) => applyUi(name),
   dismissIntro: () => $('startBtn').click(),
   /** Freeze the scene clock (seconds) for frame-exact screenshots; null resumes. */
   freeze: (t: number | null) => {

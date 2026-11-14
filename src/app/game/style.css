@@ -349,6 +349,217 @@ button.primary {
   font-size: 1.05rem;
 }
 
+/* ---- icons in the buttons (shown by the compact layouts) ---- */
+button svg {
+  display: none;
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+#gear {
+  display: none;
+}
+.title b {
+  font-weight: inherit;
+}
+
+/* ================================================================ layout mockups
+   classic: the lab's layout around the tilted terrarium on its table (the default).
+   board:   head-on, glass edge to edge, chips on top and round icon buttons below, like a block puzzle board.
+   hero:    the bottle centered on top of the tray with level and moves either side; buttons spread along the bottom.
+   cozy:    the tilted terrarium cropped close, with the header and buttons on frosted cards. */
+body:not([data-ui='classic']) .title h1,
+body:not([data-ui='classic']) .size,
+body:not([data-ui='classic']) .more summary {
+  display: none;
+}
+body:not([data-ui='classic']) #gear {
+  display: inline-flex;
+}
+body:not([data-ui='classic']) button svg {
+  display: block;
+}
+body:not([data-ui='classic']) .controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+/* the help line only appears when it has something to say, floating above the buttons */
+body:not([data-ui='classic']) .how {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 32px);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 14px;
+  min-height: 0;
+}
+body:not([data-ui='classic']) .how:not(.active) {
+  display: none;
+}
+body:not([data-ui='classic']) .more {
+  position: static;
+  width: 100%;
+}
+body:not([data-ui='classic']) .more:not([open]) {
+  display: none;
+}
+body:not([data-ui='classic']) .morePanel {
+  left: max(12px, env(safe-area-inset-left, 0px));
+  right: max(12px, env(safe-area-inset-right, 0px));
+  bottom: calc(100% + 8px);
+  margin: 0 auto;
+  max-width: 460px;
+}
+body:not([data-ui='classic']) .foot {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+}
+
+/* chips: level on the left, moves on the right */
+body[data-ui='board'] .hud,
+body[data-ui='hero'] .hud {
+  align-items: center;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
+}
+body[data-ui='board'] #levelLabel,
+body[data-ui='hero'] #levelLabel,
+body[data-ui='board'] .count,
+body[data-ui='hero'] .count {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: 0 6px 16px -10px rgba(90, 63, 51, 0.6);
+}
+body[data-ui='board'] #levelLabel,
+body[data-ui='hero'] #levelLabel {
+  display: inline-block;
+  padding: 8px 14px;
+  font: 700 0.92rem var(--body);
+  color: var(--muted);
+}
+body[data-ui='board'] .title b,
+body[data-ui='hero'] .title b {
+  color: var(--ink);
+  font: 600 1.05rem var(--display);
+}
+body[data-ui='board'] .count,
+body[data-ui='hero'] .count {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 5px 14px 6px;
+}
+body[data-ui='board'] .count strong,
+body[data-ui='hero'] .count strong {
+  font-size: 1.45rem;
+}
+body[data-ui='board'] .count .muted,
+body[data-ui='hero'] .count .muted {
+  display: none;
+}
+body[data-ui='board'] .controls button,
+body[data-ui='hero'] .controls button {
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  box-shadow: 0 8px 18px -12px rgba(90, 63, 51, 0.7);
+}
+body[data-ui='board'] .controls .lbl,
+body[data-ui='hero'] .controls .lbl {
+  display: none;
+}
+body[data-ui='board'] .controls {
+  gap: 18px;
+}
+
+/* hero: the two chips stack into the corners beside the bottle */
+body[data-ui='hero'] .hud {
+  align-items: flex-start;
+}
+body[data-ui='hero'] .count {
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  border-radius: 20px;
+  padding: 6px 16px 7px;
+}
+body[data-ui='hero'] .count strong {
+  font-size: 1.9rem;
+}
+body[data-ui='hero'] #levelLabel {
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 14px;
+}
+body[data-ui='hero'] .title .meta {
+  font-size: 0.82rem;
+}
+body[data-ui='hero'] .controls {
+  width: 100%;
+  justify-content: space-between;
+  padding: 0 6px;
+}
+
+/* cozy: frosted cards over the scene */
+body[data-ui='cozy'] .hud {
+  margin: calc(env(safe-area-inset-top, 0px) + 8px) 10px 0;
+  padding: 9px 14px;
+  border-radius: 20px;
+  align-items: center;
+  background: rgba(255, 248, 240, 0.78);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 24px -18px rgba(90, 63, 51, 0.7);
+}
+body[data-ui='cozy'] #levelLabel {
+  font-size: 0.9rem;
+}
+body[data-ui='cozy'] .title b {
+  color: var(--ink);
+  font: 600 1.25rem var(--display);
+}
+body[data-ui='cozy'] .count strong {
+  font-size: 1.5rem;
+}
+body[data-ui='cozy'] .controls {
+  background: rgba(255, 248, 240, 0.78);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-radius: 999px;
+  padding: 5px;
+  gap: 4px;
+  box-shadow: 0 10px 24px -18px rgba(90, 63, 51, 0.7);
+}
+body[data-ui='cozy'] .controls button {
+  background: transparent;
+  border-color: transparent;
+  padding: 8px 14px;
+  font-size: 0.86rem;
+}
+body[data-ui='cozy'] .controls {
+  flex-wrap: nowrap;
+}
+body[data-ui='cozy'] #gear .lbl {
+  display: none;
+}
+body[data-ui='cozy'] .controls button:disabled {
+  background: transparent;
+}
+body[data-ui='cozy'] .toast {
+  top: calc(env(safe-area-inset-top, 0px) + 74px);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .morePanel,
   .foot.nudge #undo,

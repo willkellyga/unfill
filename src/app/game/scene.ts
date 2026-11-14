@@ -25,6 +25,18 @@ const PITCH_DEG = 21;
 const YAW_DEG = 9;
 const FOV = 26;
 
+/** How the camera looks at the tray, and where the bottle stands: one per UI layout. */
+export interface View {
+  pitchDeg: number;
+  yawDeg: number;
+  /** 'full' keeps the plinth, the bottle and a lifted group's arc in view; 'tight' frames the glass and bottle only. */
+  box: 'full' | 'tight';
+  bottleAt: 'right' | 'center';
+  bottleScale: number;
+}
+
+export const CLASSIC_VIEW: View = { pitchDeg: PITCH_DEG, yawDeg: YAW_DEG, box: 'full', bottleAt: 'right', bottleScale: 0.84 };
+
 export interface Insets {
   top: number;
   bottom: number;
@@ -168,9 +180,12 @@ export class Terrarium {
     return this.rows + HEADROOM + RAIL_H;
   }
 
+  view: View = CLASSIC_VIEW;
+
   /** Where the bottle stands (its base center). */
   get bottleSpot(): THREE.Vector3 {
-    return new THREE.Vector3(this.cols / 2 - 0.8, this.railTop, 0);
+    const x = this.view.bottleAt === 'center' ? 0 : this.cols / 2 - 0.4 - 0.5 * this.view.bottleScale;
+    return new THREE.Vector3(x, this.railTop, 0);
   }
 
   /** Build the tray for a board size. */
@@ -342,12 +357,17 @@ export class Terrarium {
 
     const regionW = Math.max(100, W - 2 * insets.side);
     const regionH = Math.max(100, H - insets.top - insets.bottom);
-    const xs = this.cols / 2 + 0.4;
-    const top = this.railTop + 3.1; // bottle and cork, and the top of a lifted group's arc
-    const box = new THREE.Box3(new THREE.Vector3(-xs, -PLINTH_H, -0.8), new THREE.Vector3(xs, top, 0.8));
+    const v = this.view;
+    const tight = v.box === 'tight';
+    const xs = this.cols / 2 + (tight ? 0.12 : 0.4);
+    // bottle and cork; the full box also keeps the top of a lifted group's arc in view
+    const top = this.railTop + (tight ? v.bottleScale * 3.3 : 3.1);
+    const box = tight
+      ? new THREE.Box3(new THREE.Vector3(-xs, -0.12, -0.55), new THREE.Vector3(xs, top, 0.55))
+      : new THREE.Box3(new THREE.Vector3(-xs, -PLINTH_H, -0.8), new THREE.Vector3(xs, top, 0.8));
     const center = box.getCenter(new THREE.Vector3());
-    const pitch = (PITCH_DEG * Math.PI) / 180;
-    const yaw = (YAW_DEG * Math.PI) / 180;
+    const pitch = (v.pitchDeg * Math.PI) / 180;
+    const yaw = (v.yawDeg * Math.PI) / 180;
     const dir = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
     const corners: THREE.Vector3[] = [];
     for (const x of [box.min.x, box.max.x])
