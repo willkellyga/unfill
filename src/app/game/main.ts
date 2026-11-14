@@ -28,6 +28,7 @@ import {
   type PatternMode,
 } from './prefs';
 import { COLLECTOR_URL, DEVICE_KEY, Playtest, type Outcome } from './playtest';
+import { browserKind, homeCardHtml } from './homecard';
 import { initPwa, installState } from './pwa';
 import { SLOW_FRAME_MS, TIERS, type Tier, type TierName } from './quality';
 import { BLOCK, BOTTLE_SCALE, Terrarium } from './scene';
@@ -1257,11 +1258,66 @@ function syncInstall(): void {
   } else if (st.ios) {
     note.innerHTML =
       'In Safari, tap <b>Share</b> <span class="shareIcon" aria-label="(the square with an arrow)"></span>, then <b>Add to Home Screen</b>. It opens full screen and plays offline. Your Safari progress doesn’t move over by itself: use “Move your progress” below.';
+    showMeHow(row);
+  } else if (deviceKind === 'android') {
+    note.textContent = 'Add Unfill to your home screen from Chrome’s ⋮ menu. It opens full screen and plays offline.';
+    showMeHow(row);
   } else {
     note.textContent = st.offlineReady
       ? 'Ready to play offline in this browser. Use your browser’s “Install” or “Add to Home screen” menu item to make it an app.'
       : 'Use your browser’s “Install” or “Add to Home screen” menu item to make it an app.';
   }
+}
+
+function showMeHow(row: HTMLElement): void {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'installBtn';
+  b.textContent = 'Show me how';
+  b.onclick = () => {
+    more.open = false;
+    showHomeCard();
+  };
+  row.appendChild(b);
+}
+
+// ---------------------------------------------------------------- the Add to Home Screen card (first open)
+
+const HOME_KEY = 'unfill-home-asked';
+const deviceKind = browserKind(navigator.userAgent, navigator.maxTouchPoints, navigator.platform);
+let homeOpen = false;
+
+/** The welcome card: how to add Unfill to the home screen on this phone (homecard.ts). */
+function showHomeCard(): void {
+  homeOpen = true;
+  const st = installState();
+  $('homeInner').innerHTML = homeCardHtml({ kind: deviceKind, prompt: st.prompt, hasProgress: resumed || S.shelf.length > 0 });
+  $('homeCard').hidden = false;
+  const install = document.getElementById('homeInstall');
+  if (install)
+    install.onclick = async () => {
+      await st.prompt?.();
+      closeHomeCard();
+    };
+  $('homeLater').onclick = closeHomeCard;
+  $('homeInner').scrollTop = 0;
+}
+function closeHomeCard(): void {
+  homeOpen = false;
+  $('homeCard').hidden = true;
+}
+
+/**
+ * The first time a phone opens the game in its browser (not the home-screen app), show the card once. `?homecard`
+ * shows it any time (to preview it); test links and scripted browsers don't get it otherwise.
+ */
+function maybeAskHome(): void {
+  const st = installState();
+  if (params.has('homecard')) return showHomeCard();
+  if (ephemeral || st.standalone || !st.offlineCapable || deviceKind === 'other' || navigator.webdriver) return;
+  if (store.get(HOME_KEY) === '1') return;
+  store.set(HOME_KEY, '1');
+  showHomeCard();
 }
 
 // ---------------------------------------------------------------- playtest: name and what's been sent
@@ -1482,7 +1538,13 @@ $('startBtn').onclick = () => {
   const st = installState();
   playtest?.opened({ run: S.seed, n: S.n, installed: st.standalone, ios: st.ios, screen: `${screen.width}x${screen.height}` });
 };
-initPwa(() => syncInstall(), toast);
+initPwa(() => {
+  syncInstall();
+  // Android's install prompt can arrive after the card is up: swap the steps for the one-tap button
+  if (homeOpen) showHomeCard();
+}, toast);
+maybeAskHome();
+window.addEventListener('appinstalled', closeHomeCard);
 
 // her progress is saved after every move; this catches anything in flight when the page goes away
 window.addEventListener('pagehide', persist);
