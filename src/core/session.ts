@@ -183,7 +183,7 @@ export class Session {
     return this.begin(this.n + 1, false);
   }
 
-  private setBoard(n: number, pick: Pick): void {
+  protected setBoard(n: number, pick: Pick): void {
     this.n = n;
     this.pick = pick;
     const { board, solution } = transformEntry(pick.entry, pick.transform);

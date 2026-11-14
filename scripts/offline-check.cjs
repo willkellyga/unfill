@@ -70,7 +70,10 @@ const IPHONE_UA =
   check(JSON.stringify(back) === JSON.stringify(taps), 'her move is still there');
   const fonts = await page.evaluate(async () => {
     await document.fonts.ready;
-    return ['600 20px Fredoka', '800 20px Nunito'].map((f) => document.fonts.check(f));
+    // load them by name (from the offline cache), since not every weight is on screen at this moment
+    const faces = ['600 20px Fredoka', '800 20px Nunito'];
+    await Promise.all(faces.map((f) => document.fonts.load(f).catch(() => null)));
+    return faces.map((f) => document.fonts.check(f));
   });
   check(fonts.every(Boolean), 'Fredoka and Nunito load offline');
   await page.click('#startBtn');

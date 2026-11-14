@@ -416,41 +416,6 @@ body .morePanel {
 body .foot {
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
 }
-
-/* chips: level on the left, moves on the right */
-body .hud {
-  align-items: center;
-  padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
-}
-body #levelLabel,
-body .count {
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  box-shadow: 0 6px 16px -10px rgba(90, 63, 51, 0.6);
-}
-body #levelLabel {
-  display: inline-block;
-  padding: 8px 14px;
-  font: 700 0.92rem var(--body);
-  color: var(--muted);
-}
-body .title b {
-  color: var(--ink);
-  font: 600 1.05rem var(--display);
-}
-body .count {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  padding: 5px 14px 6px;
-}
-body .count strong {
-  font-size: 1.45rem;
-}
-body .count .muted {
-  display: none;
-}
 body .controls button {
   width: 56px;
   height: 56px;
@@ -459,31 +424,6 @@ body .controls button {
 }
 body .controls .lbl {
   display: none;
-}
-
-/* hero: the two chips stack into the corners beside the bottle */
-body .hud {
-  align-items: flex-start;
-}
-body .count {
-  flex-direction: column;
-  align-items: center;
-  gap: 0;
-  border-radius: 20px;
-  padding: 6px 16px 7px;
-}
-body .count strong {
-  font-size: 1.9rem;
-}
-body #levelLabel {
-  border-radius: 20px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 8px 14px;
-}
-body .title .meta {
-  font-size: 0.82rem;
 }
 body .controls {
   width: 100%;
@@ -498,15 +438,6 @@ body .controls {
 }
 
 /* ================================================================ milestone 5: the full loop */
-
-/* the moves chip glows softly while there's a known way to finish with the moves left */
-body .count {
-  transition: box-shadow 0.6s ease, border-color 0.6s ease;
-}
-body .count.ontrack {
-  border-color: #b9d9a9;
-  box-shadow: 0 6px 16px -10px rgba(90, 63, 51, 0.6), 0 0 0 3px rgba(140, 196, 134, 0.28), 0 0 18px rgba(140, 196, 134, 0.35);
-}
 
 /* level and clear banners float over the tray, never ask for a tap, and fade on their own */
 .banner {
@@ -750,52 +681,7 @@ body .count.ontrack {
   }
 }
 
-/* ================================================================ points (Nov 14): moves made next to par, score and best */
-body #levelLabel .meta {
-  font-variant-numeric: tabular-nums;
-}
-body #levelLabel .used {
-  color: var(--ink);
-  font-weight: 800;
-}
-body #levelLabel.over .used {
-  color: var(--accent);
-}
-body .count small {
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-variant-numeric: tabular-nums;
-}
-.count strong.pour {
-  color: #c8962e;
-}
-/* moves left sits between the shelf and settings buttons */
-.movesPill {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  align-self: center;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 8px 16px;
-  box-shadow: 0 8px 18px -12px rgba(90, 63, 51, 0.7);
-  font-variant-numeric: tabular-nums;
-}
-.movesPill strong {
-  font: 600 1.4rem/1 var(--display);
-  transition: color 0.3s ease;
-}
-.movesPill strong.pour {
-  color: #c8962e;
-}
-.movesPill small {
-  font: 700 0.82rem var(--body);
-  color: var(--muted);
-}
-.movesPill.low strong {
-  color: var(--accent);
-}
+/* ================================================================ points (Nov 14) */
 #overBest.best {
   color: #c8962e;
   font-size: 1.05rem;
@@ -1066,4 +952,311 @@ html.reduced .uprightBody {
   line-height: 1.4;
   color: var(--muted);
   align-self: start;
+}
+
+/* ================================================================ header (Nov 14, Will): moves at the top center
+   Three slots, left / center / right. The side slots take equal shares, so the center card stays centered over the
+   bottle whatever the sides hold; a new chip (a daily puzzle, say) goes into a slot and the row stays put. */
+body .hud {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
+  padding-left: max(12px, env(safe-area-inset-left, 0px));
+  padding-right: max(12px, env(safe-area-inset-right, 0px));
+}
+.hudSlot {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+.hudLeft {
+  justify-content: flex-start;
+}
+.hudCenter {
+  justify-content: center;
+}
+.hudRight {
+  justify-content: flex-end;
+}
+.hud .chip {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: 0 6px 16px -10px rgba(90, 63, 51, 0.6);
+  font-variant-numeric: tabular-nums;
+}
+/* the side chips: a small label over a big number, and the score over its best */
+.hud .levelChip,
+.hud .count {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 6px 12px 7px;
+  min-width: 64px;
+  text-align: center;
+}
+.hud .levelChip small,
+.hud .count small {
+  font: 700 0.74rem/1.1 var(--body);
+  color: var(--muted);
+}
+.hud .levelChip b,
+.hud .count strong {
+  font: 600 1.55rem/1 var(--display);
+  color: var(--ink);
+}
+.hud .count small {
+  order: 2;
+}
+.hud .count strong.pour {
+  color: #c8962e;
+}
+
+/* the moves card */
+.hud .movesCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px 8px;
+  border-radius: 22px;
+  min-width: 132px;
+  max-width: calc(100vw - 2 * 64px - 2 * 12px - 16px - 8px);
+}
+.movesLine {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+.movesLine strong {
+  font: 600 1.85rem/1 var(--display);
+  transition: color 0.3s ease;
+}
+.movesLine strong.pour {
+  color: #c8962e;
+}
+.movesLine small {
+  font: 700 0.84rem var(--body);
+  color: var(--muted);
+}
+.movesCard.low .movesLine strong {
+  color: var(--accent);
+}
+.goal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font: 700 0.8rem/1.1 var(--body);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.goal em {
+  font-style: normal;
+  color: var(--accent);
+  font-weight: 800;
+}
+
+/* track: one slot per par lift, filling with the color lifted; lifts past par hang off the end in red */
+.track {
+  display: flex;
+  gap: 3px;
+}
+.track .slot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  border: 1.5px dashed #d5b496;
+  background: transparent;
+}
+.track .slot.on {
+  border: 1.5px solid rgba(90, 63, 51, 0.18);
+  background: var(--c);
+  animation: slotIn 0.35s ease both;
+}
+.track .slot.over {
+  border: 1.5px solid var(--accent);
+  background: rgba(207, 108, 95, 0.25);
+}
+.track.small .slot {
+  width: 8px;
+  height: 9px;
+  border-radius: 2.5px;
+}
+.track.tiny {
+  gap: 2px;
+}
+.track.tiny .slot {
+  width: 6px;
+  height: 9px;
+  border-radius: 2px;
+}
+@keyframes slotIn {
+  from {
+    transform: scale(0.4);
+  }
+}
+html.reduced .track .slot.on {
+  animation: none;
+}
+
+/* ================================================================ the first-play lesson (Nov 14)
+   A speech bubble over the bottom buttons (the tray is framed above it), and a finger resting on the sand to lift. */
+.coach {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
+  transform: translateX(-50%);
+  width: min(360px, calc(100% - 32px));
+  /* room for two lines, so the tray isn't reframed as the words change */
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 12px 16px 8px;
+  box-shadow: 0 14px 30px -18px rgba(90, 63, 51, 0.75);
+  z-index: 2;
+}
+.coach::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -7px;
+  width: 14px;
+  height: 14px;
+  background: var(--paper);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  transform: translateX(-50%) rotate(45deg);
+}
+.coach p {
+  margin: 0;
+  font: 700 0.95rem/1.38 var(--body);
+  text-align: center;
+  color: var(--ink);
+}
+.coach p b {
+  color: var(--accent);
+}
+.coach.fresh p {
+  animation: coachIn 0.35s ease both;
+}
+@keyframes coachIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.coach.nudge {
+  animation: nudge 0.4s ease;
+}
+@keyframes nudge {
+  20%,
+  60% {
+    transform: translateX(calc(-50% - 6px));
+  }
+  40%,
+  80% {
+    transform: translateX(calc(-50% + 6px));
+  }
+}
+button.coachSkip {
+  align-self: center;
+  min-height: 0;
+  padding: 4px 10px;
+  border: none;
+  background: none;
+  box-shadow: none;
+  font: 700 0.78rem var(--body);
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* the finger: its tip (at 22,14 in the drawing) sits on the point it's placed at */
+.tapHand {
+  position: fixed;
+  left: -25px;
+  top: -16px;
+  width: 72px;
+  height: 72px;
+  pointer-events: none;
+  z-index: 1;
+}
+.tapHand svg {
+  width: 100%;
+  height: 100%;
+  animation: tapHand 1.3s ease-in-out infinite;
+  transform-origin: 22px 14px;
+  overflow: visible;
+}
+.tapHandFinger {
+  fill: #fff8f0;
+  stroke: #5a3f33;
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+}
+.tapHandRing {
+  fill: rgba(255, 248, 240, 0.35);
+  stroke: #fff8f0;
+  stroke-width: 2.5;
+  animation: tapRing2 1.3s ease-out infinite;
+  transform-origin: 22px 14px;
+}
+@keyframes tapHand {
+  0%,
+  100% {
+    transform: translate(6px, 8px);
+  }
+  45%,
+  60% {
+    transform: translate(0, 0) scale(0.94);
+  }
+}
+@keyframes tapRing2 {
+  0%,
+  40% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  55% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+/* lesson 2 points at the moves card: a soft pulsing ring */
+.hud .movesCard.spot {
+  animation: spot 1.6s ease-in-out infinite;
+}
+@keyframes spot {
+  0%,
+  100% {
+    box-shadow: 0 6px 16px -10px rgba(90, 63, 51, 0.6), 0 0 0 0 rgba(207, 108, 95, 0.45);
+  }
+  50% {
+    box-shadow: 0 6px 16px -10px rgba(90, 63, 51, 0.6), 0 0 0 7px rgba(207, 108, 95, 0);
+  }
+}
+/* the score means nothing in the lesson */
+html.lesson .hud .count {
+  opacity: 0.45;
+}
+html.reduced .tapHand svg,
+html.reduced .tapHandRing,
+html.reduced .coach.fresh p,
+html.reduced .coach.nudge,
+html.reduced .hud .movesCard.spot {
+  animation: none;
+}
+html.reduced .hud .movesCard.spot {
+  box-shadow: 0 0 0 3px rgba(207, 108, 95, 0.45);
 }

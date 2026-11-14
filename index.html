@@ -18,14 +18,22 @@
   <body>
     <canvas id="scene" aria-label="A glass tray of colored sand blocks. Tap a block to lift its group."></canvas>
 
+    <!-- three slots, left / center / right: anything new in the header is another chip in one of them -->
     <header class="hud" id="hud">
-      <div class="title">
-        <h1>Unfill</h1>
-        <span id="levelLabel"><b id="levelNum">Level 1</b><span class="meta"><span class="used" id="used">0</span> / par <span id="par">0</span></span></span>
+      <div class="hudSlot hudLeft" id="hudLeft">
+        <div class="chip levelChip" id="levelLabel"><small id="levelWord">level</small><b id="levelNum">1</b></div>
       </div>
-      <div class="count" aria-live="polite">
-        <strong id="score">0</strong>
-        <small id="best">best 0</small>
+      <div class="hudSlot hudCenter" id="hudCenter">
+        <div class="chip movesCard" id="movesPill">
+          <div class="movesLine" aria-live="polite"><strong id="moves">0</strong><small id="movesLabel">moves left</small></div>
+          <div class="goal" id="goal" role="img"></div>
+        </div>
+      </div>
+      <div class="hudSlot hudRight" id="hudRight">
+        <div class="chip count" aria-live="polite">
+          <strong id="score">0</strong>
+          <small id="best">best 0</small>
+        </div>
       </div>
     </header>
 
@@ -37,11 +45,19 @@
     </div>
     <output class="fps" id="fps" hidden></output>
 
+    <!-- the first-play lesson: a speech bubble over the buttons and a finger on the sand to lift -->
+    <div class="coach" id="coach" hidden aria-live="polite">
+      <p id="coachText"></p>
+      <button id="coachSkip" type="button" class="coachSkip">Skip lesson</button>
+    </div>
+    <div class="tapHand" id="tapHand" hidden aria-hidden="true">
+      <svg viewBox="0 0 64 64"><circle class="tapHandRing" cx="22" cy="14" r="11"/><path class="tapHandFinger" d="M18.5 13.5a3.5 3.5 0 0 1 7 0v15.2l2-1.2a3.4 3.4 0 0 1 4.3.7v-.3a3.4 3.4 0 0 1 6.6 0 3.4 3.4 0 0 1 6.4 1.4v1a3.4 3.4 0 0 1 6.5 1.5v9.7c0 9-5.5 15.5-14.6 15.5h-2.4c-5 0-8.4-2.2-11.3-6.4l-7.7-11.4a3.6 3.6 0 0 1 5.5-4.6l1.7 1.8z"/></svg>
+    </div>
+
     <footer class="foot" id="bar">
       <p class="how" id="hint" role="status">Tap a block to lift its group.</p>
       <div class="controls">
         <button id="shelfBtn" type="button" aria-label="Bottle shelf"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2.8h4M10.4 2.8v3.4L8.2 9a2.2 2.2 0 0 0-.5 1.4V19a2 2 0 0 0 2 2h4.6a2 2 0 0 0 2-2v-8.6c0-.5-.2-1-.5-1.4l-2.2-2.8V2.8"/><path d="M7.8 14.5h8.4"/></svg><span class="lbl">Shelf</span><span class="badge" id="shelfCount" hidden>0</span></button>
-        <div class="movesPill" id="movesPill" aria-live="polite"><strong id="moves">0</strong><small id="movesLabel">moves left</small></div>
         <button id="gear" type="button" aria-label="Settings" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.6M12 18.9v2.6M21.5 12h-2.6M5.1 12H2.5M18.7 5.3l-1.8 1.8M7.1 16.9l-1.8 1.8M18.7 18.7l-1.8-1.8M7.1 7.1 5.3 5.3"/><circle cx="12" cy="12" r="6.6"/></svg><span class="lbl">Settings</span></button>
       </div>
       <details class="more" id="more">
@@ -106,6 +122,10 @@
             <button id="setFps" type="button" role="switch" aria-checked="false" class="switch" aria-label="Show frame rate"></button>
           </div>
           <div class="setting col">
+            <span>How to play <small>the two-tray lesson again; your game waits where you left it</small></span>
+            <button id="replayLesson" type="button">Play the lesson</button>
+          </div>
+          <div class="setting col">
             <span>New run <small>start again from level 1; your bottles and high score stay</small></span>
             <button id="startOver" type="button">New run from level 1</button>
           </div>
@@ -136,6 +156,15 @@
         <p class="small" id="overBest"></p>
         <button id="againBtn" type="button" class="primary">Play again</button>
         <button id="overShelf" type="button">See your shelf</button>
+      </div>
+    </div>
+
+    <div class="intro" id="lessonDone" hidden role="dialog" aria-modal="true" aria-labelledby="lessonTitle">
+      <div class="introInner">
+        <h1 id="lessonTitle">You’ve got it</h1>
+        <p>Spare moves carry over. Beat par for bonus points.</p>
+        <p class="small">Run out of moves and the run ends. Replay this lesson from Settings.</p>
+        <button id="lessonGo" type="button" class="primary">Start level 1</button>
       </div>
     </div>
 

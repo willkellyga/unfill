@@ -75,7 +75,7 @@ const pointsFor = (lifts, par) => {
     const s = await state();
     if (s.moves < 0) fail('negative moves');
     if (s.score !== runScore) fail(`score ${s.score}, expected ${runScore}`);
-    const shown = await page.$eval('#used', (e) => Number(e.textContent));
+    const shown = await page.$eval('#movesPill', (e) => Number(e.dataset.lifts));
     if (shown !== s.taps.length) fail(`moves made shows ${shown}, expected ${s.taps.length}`);
     if (s.over) {
       await page.waitForFunction(() => window.unfill.overShown(), null, { timeout: 15000 });
