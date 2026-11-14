@@ -17,30 +17,40 @@ import { BLOCK, BLOCK_DEPTH } from './scene';
  * (a diagonal bit only when both sides and the diagonal block are the same color).
  */
 
-export type BlockStyle = 'classic' | 'merged' | 'puffy' | 'scored';
-
-export const BLOCK_STYLES: { id: BlockStyle; label: string }[] = [
-  { id: 'classic', label: 'Now' },
-  { id: 'merged', label: 'Merged' },
-  { id: 'puffy', label: 'Puffy' },
-  { id: 'scored', label: 'Scored' },
-];
+export const BLOCK_STYLES = ['classic', 'merged', 'puffy', 'scored', 'grooved', 'pillowed', 'softscored', 'stamped'] as const;
+export type BlockStyle = (typeof BLOCK_STYLES)[number];
 
 export function parseBlockStyle(v: string | null): BlockStyle {
-  return v === 'classic' || v === 'merged' || v === 'puffy' || v === 'scored' ? v : 'merged';
+  return (BLOCK_STYLES as readonly string[]).includes(v ?? '') ? (v as BlockStyle) : 'merged';
 }
 
 export interface MergedLook {
   /** Corner and bevel radius, world units (a cell is 1). */
   radius: number;
-  /** Strength of the soft score line drawn where two blocks of a group meet (0: none). */
+  /**
+   * What marks the joins inside a piece: 0 nothing, 1 a soft shaded score line, 2 a pressed groove that catches the
+   * light, 3 each cell gently domed (a chocolate bar), 4 a row of stamped dimples, 5 a bolder score line.
+   */
   score: number;
 }
 
 export function mergedLook(style: BlockStyle): MergedLook {
-  if (style === 'puffy') return { radius: 0.24, score: 0 };
-  if (style === 'scored') return { radius: 0.13, score: 1 };
-  return { radius: 0.13, score: 0 };
+  switch (style) {
+    case 'puffy':
+      return { radius: 0.24, score: 0 };
+    case 'scored':
+      return { radius: 0.13, score: 1 };
+    case 'grooved':
+      return { radius: 0.13, score: 2 };
+    case 'pillowed':
+      return { radius: 0.13, score: 3 };
+    case 'softscored':
+      return { radius: 0.24, score: 5 };
+    case 'stamped':
+      return { radius: 0.13, score: 4 };
+    default:
+      return { radius: 0.13, score: 0 };
+  }
 }
 
 export const NB = { R: 1, L: 2, U: 4, D: 8, UR: 16, UL: 32, DL: 64, DR: 128 } as const;
@@ -206,25 +216,63 @@ uniform float uScore;
 flat varying float vMask;
 varying vec3 vLocal;
 varying vec3 vLocalN;
+varying vec3 vTx;
+varying vec3 vTy;
+vec2 unfillGrad = vec2(0.0);
 
-// Soft shading for the merged shape: a little darker toward the outline (the old baked edge band) and, for the
-// scored look, a pressed line where two blocks of a group meet.
+// One join's relief, seen from inside this block: e is the distance in from the joined edge, t the position along
+// it. Adds to the slope of the surface (grad, along the outward direction a) and returns how shadowed it is (0..1).
+float unfillJoin(int kind, float e, float t, vec2 a) {
+  if (kind == 1 || kind == 5) {
+    // a soft shaded score line, with no slope (5: a little bolder, for the rounder outline)
+    return kind == 1 ? 0.2 * exp(-pow(e / 0.035, 2.0)) : 0.3 * exp(-pow(e / 0.04, 2.0));
+  }
+  if (kind == 2) {
+    // a pressed groove: its two walls catch and lose the light
+    float w = 0.045;
+    float g = exp(-pow(e / w, 2.0));
+    unfillGrad -= a * (0.045 * 2.0 * e / (w * w) * g);
+    return 0.16 * g;
+  }
+  if (kind == 3) {
+    // each cell domed, dipping into a soft crease at the join
+    float w = 0.32;
+    if (e >= w) return 0.0;
+    float k = 1.0 - e / w;
+    unfillGrad -= a * (0.13 * 2.0 * k / w);
+    return 0.16 * k * k * k;
+  }
+  // stamped dimples in a row along the join
+  float rr = 0.06;
+  float c = clamp(floor(t / 0.2 + 0.5) * 0.2, -0.4, 0.4);
+  vec2 rv = vec2(e, t - c);
+  float r = length(rv);
+  if (r >= rr) return 0.0;
+  float q = 1.0 - (r * r) / (rr * rr);
+  // height -D q^2: the slope rises away from the dimple's center
+  vec2 along = abs(a.x) > 0.5 ? vec2(0.0, 1.0) : vec2(1.0, 0.0);
+  vec2 d = -a * rv.x + along * rv.y; // from the dimple center to here
+  unfillGrad += d * (0.03 * 4.0 * q / (rr * rr));
+  return 0.32 * q;
+}
+
+// Soft shading for the merged shape: a little darker toward the outline (the old baked edge band), and the marks
+// where the blocks of a piece meet.
 float unfillShade() {
   int m = int(vMask + 0.5);
   float rim = clamp(1.0 - vLocalN.z, 0.0, 1.0);
   float s = 1.0 - 0.18 * rim - 0.12 * max(-vLocalN.y, 0.0);
-  if (uScore > 0.0 && vLocalN.z > 0.6) {
-    float w = 0.035;
+  int kind = int(uScore + 0.5);
+  if (kind > 0 && vLocalN.z > 0.6) {
     vec2 p = vLocal.xy;
-    float g = 0.0;
-    if ((m & 1) != 0) g = max(g, exp(-pow((0.5 - p.x) / w, 2.0)));
-    if ((m & 2) != 0) g = max(g, exp(-pow((p.x + 0.5) / w, 2.0)));
-    if ((m & 4) != 0) g = max(g, exp(-pow((0.5 - p.y) / w, 2.0)));
-    if ((m & 8) != 0) g = max(g, exp(-pow((p.y + 0.5) / w, 2.0)));
-    // a lit lip just under each line across, as if pressed in with a blade
-    float lip = (m & 4) != 0 ? exp(-pow((0.5 - w * 1.6 - p.y) / w, 2.0)) : 0.0;
-    s *= 1.0 - 0.2 * uScore * g;
-    s *= 1.0 + 0.05 * uScore * lip;
+    float occ = 0.0;
+    if ((m & 1) != 0) occ = max(occ, unfillJoin(kind, 0.5 - p.x, p.y, vec2(1.0, 0.0)));
+    if ((m & 2) != 0) occ = max(occ, unfillJoin(kind, p.x + 0.5, p.y, vec2(-1.0, 0.0)));
+    if ((m & 4) != 0) occ = max(occ, unfillJoin(kind, 0.5 - p.y, p.x, vec2(0.0, 1.0)));
+    if ((m & 8) != 0) occ = max(occ, unfillJoin(kind, p.y + 0.5, p.x, vec2(0.0, -1.0)));
+    s *= 1.0 - occ;
+    // fade the relief out where the front face rounds over into the bevel
+    unfillGrad *= smoothstep(0.6, 0.9, vLocalN.z);
   }
   return s;
 }
@@ -238,15 +286,18 @@ export function patchMerged(shader: THREE.WebGLProgramParametersWithUniforms, lo
   shader.uniforms.uHalfZ = { value: BLOCK_DEPTH / 2 };
   shader.uniforms.uScore = { value: look.score };
   shader.vertexShader = shader.vertexShader
-    .replace('#include <common>', '#include <common>\n' + MAP_GLSL)
+    .replace('#include <common>', '#include <common>\n' + MAP_GLSL + 'varying vec3 vTx;\nvarying vec3 vTy;\n')
     .replace(
       '#include <beginnormal_vertex>',
-      'vec3 unfillPos;\nvec3 objectNormal;\nunfillMap(position, normal, unfillPos, objectNormal);\nvMask = aMask;\nvLocal = unfillPos;\nvLocalN = objectNormal;',
+      'vec3 unfillPos;\nvec3 objectNormal;\nunfillMap(position, normal, unfillPos, objectNormal);\nvMask = aMask;\nvLocal = unfillPos;\nvLocalN = objectNormal;\n' +
+        '#ifdef USE_INSTANCING\nmat3 unfillM = mat3(modelViewMatrix) * mat3(instanceMatrix);\n#else\nmat3 unfillM = mat3(modelViewMatrix);\n#endif\n' +
+        'vTx = normalize(unfillM * vec3(1.0, 0.0, 0.0));\nvTy = normalize(unfillM * vec3(0.0, 1.0, 0.0));',
     )
     .replace('#include <begin_vertex>', 'vec3 transformed = unfillPos;\n#ifdef USE_MAP\nvMapUv = unfillPos.xy + 0.5;\n#endif');
   shader.fragmentShader = shader.fragmentShader
     .replace('#include <common>', '#include <common>\n' + SCORE_GLSL)
-    .replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb *= unfillShade();');
+    .replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb *= unfillShade();')
+    .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\nnormal = normalize(normal - unfillGrad.x * vTx - unfillGrad.y * vTy);');
 }
 
 /** Shadow-map material that wraps the box the same way. */
