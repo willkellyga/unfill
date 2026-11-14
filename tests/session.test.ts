@@ -1,15 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  EMPTY,
   Random,
   SLACK,
   Session,
   boardsEqual,
-  countBlocks,
-  finishes,
   findGroups,
-  searchFinish,
+  pointsFor,
   starsFor,
   type Keepsake,
   type Library,
@@ -36,6 +33,7 @@ function sameState(a: Session, b: Session): void {
   expect(b.history.length).toBe(a.history.length);
   expect(b.shelf.length).toBe(a.shelf.length);
   expect(b.recent).toEqual(a.recent);
+  expect(b.score).toBe(a.score);
 }
 
 /** A first-group-it-sees player with some undos and restarts mixed in, reloading the save after every action. */
@@ -158,21 +156,47 @@ describe('session', () => {
   });
 });
 
-describe('hint search', () => {
-  it('finds a finish that really empties the board, and says whether it fits', () => {
-    const s = new Session(boards, 11);
-    for (const n of [1, 12, 30, 50]) {
-      s.begin(n, true);
-      // wander off the path with two lifts of the last group
-      for (let k = 0; k < 2; k++) {
-        const g = findGroups(s.cur.board).groups;
-        s.lift(g[g.length - 1][0]);
+describe('points', () => {
+  it('par is the baseline; under par earns more, over par less and less, never nothing', () => {
+    expect(pointsFor(10, 10)).toBe(200);
+    expect(pointsFor(9, 10)).toBe(300);
+    expect(pointsFor(8, 10)).toBe(400);
+    expect(pointsFor(11, 10)).toBe(150);
+    expect(pointsFor(12, 10)).toBe(115);
+    for (let par = 3; par <= 20; par++) {
+      for (let lifts = 1; lifts < 60; lifts++) {
+        expect(pointsFor(lifts, par)).toBeGreaterThanOrEqual(pointsFor(lifts + 1, par));
+        expect(pointsFor(lifts, par)).toBeGreaterThanOrEqual(5);
+        expect(pointsFor(lifts, par) % 5).toBe(0);
       }
-      const a = searchFinish(s.cur.board, s.pool.moves, 1000, () => performance.now());
-      expect(finishes(s.cur.board, a.taps)).toBe(true);
-      expect(a.fits).toBe(a.taps.length <= s.pool.moves);
-      expect(s.cur.board.cells[a.taps[0]]).not.toBe(EMPTY);
-      expect(countBlocks(s.cur.board)).toBeGreaterThan(0);
+    }
+  });
+
+  it('a run without undo or restart scores every clear, ends when moves run out, and survives reloads', () => {
+    for (const seed of [1, 2, 3, 4]) {
+      const R = new Random(seed);
+      let s = new Session(boards, seed);
+      s.begin(1, true);
+      let cleared = 0;
+      while (!s.over && cleared < 80) {
+        // a so-so player: the stored solution's next move two times in three, otherwise a random group
+        const known = s.knownFinish();
+        const groups = findGroups(s.cur.board).groups;
+        const cell = known && R.int(3) > 0 ? known[0] : groups[R.int(groups.length)][0];
+        const out = s.lift(cell);
+        expect(out && out !== 'out').toBeTruthy();
+        if (s.cleared) {
+          cleared++;
+          s.next();
+        }
+        s = reload(s);
+      }
+      expect(s.score).toBe(s.shelf.reduce((a, k) => a + k.points, 0));
+      expect(s.shelf.every((k) => k.points === pointsFor(k.lifts, k.par))).toBe(true);
+      if (s.over) {
+        expect(s.lift(findGroups(s.cur.board).groups[0][0])).toBe('out');
+        expect(reload(s).over).toBe(true);
+      }
     }
   });
 });

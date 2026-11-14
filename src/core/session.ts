@@ -30,6 +30,8 @@ export interface Keepsake {
   stars: 1 | 2 | 3;
   /** Leftover moves above the bank cap, turned into a ribbon on the bottle instead of being carried over. */
   spare: number;
+  /** Points scored for the board. */
+  points: number;
   /** When it was corked (ms since 1970), passed in by the app. */
   at: number;
 }
@@ -45,6 +47,25 @@ export interface SaveData {
   taps: number[];
   /** Recently played board ids, oldest first, so boards don't repeat soon. */
   recent: string[];
+  /** Points scored this run. */
+  score: number;
+}
+
+/**
+ * Points for clearing a board (Will, Nov 14): par is the baseline, worth 20 points per par move, so bigger trays
+ * are worth more. Every lift under par adds half the baseline again; every lift over par keeps three quarters of
+ * what was left, so points shrink more and more the further over par she goes, but a clear always scores
+ * something. Rounded to 5.
+ */
+export const POINTS_PER_PAR_MOVE = 20;
+export const UNDER_PAR_BONUS = 0.5;
+export const OVER_PAR_KEEP = 0.75;
+
+export function pointsFor(lifts: number, par: number): number {
+  const base = POINTS_PER_PAR_MOVE * par;
+  const d = lifts - par;
+  const f = d <= 0 ? 1 + UNDER_PAR_BONUS * -d : Math.pow(OVER_PAR_KEEP, d);
+  return Math.max(5, Math.round((base * f) / 5) * 5);
 }
 
 /** Boards remembered so none repeat soon (plan: "the last 200 board ids"). */
@@ -79,6 +100,8 @@ export class Session {
   taps: number[] = [];
   pool!: MovePool;
   recent: string[] = [];
+  /** Points scored this run (cleared boards only). */
+  score = 0;
   /** Bottles, oldest first. The app stores these separately from the save, since they only change on a clear. */
   shelf: Keepsake[];
   /** Blocks in the tray at the start of this board. */
@@ -113,6 +136,11 @@ export class Session {
 
   get lifts(): number {
     return this.history.length;
+  }
+
+  /** The run is over: no moves left and sand still in the tray. */
+  get over(): boolean {
+    return this.pool.moves === 0 && !this.cleared;
   }
 
   /**
@@ -177,6 +205,7 @@ export class Session {
     let keepsake: Keepsake | null = null;
     if (this.cleared) {
       keepsake = this.keepsake(at);
+      this.score += keepsake.points;
       this.shelf.push(keepsake);
     }
     return { before, res, color, keepsake };
@@ -198,6 +227,7 @@ export class Session {
       par: this.par,
       stars: starsFor(this.taps.length, this.par),
       spare: cap === null ? 0 : Math.max(0, this.pool.moves - cap),
+      points: pointsFor(this.taps.length, this.par),
       at,
     };
   }
@@ -247,6 +277,7 @@ export class Session {
       pool: { ...this.pool },
       taps: this.taps.slice(),
       recent: this.recent.slice(),
+      score: this.score,
     };
   }
 
@@ -270,14 +301,16 @@ export class Session {
       s.recent = Array.isArray(d.recent) ? d.recent.filter((x) => typeof x === 'string').slice(-RECENT_LIMIT) : [];
       s.setBoard(d.n, { slot: slotFor(d.n), entry, transform: { mirror: t.mirror, perm: t.perm.slice() } });
       s.pool = { moves: p.atBoardStart, atBoardStart: p.atBoardStart };
+      const score = Number.isInteger(d.score) && d.score >= 0 ? d.score : 0;
       for (const tap of d.taps) {
         // a replayed tap that lands on an empty cell means the save and the rules disagree
         if (s.cleared || s.cur.board.cells[tap] === EMPTY) return null;
         const out = s.lift(tap);
         if (!out || out === 'out') return null;
-        // the clear that finished this board was already shelved when it happened
+        // the clear that finished this board was already shelved and scored when it happened
         if (out.keepsake) shelf.pop();
       }
+      s.score = score;
       return s;
     } catch {
       return null;

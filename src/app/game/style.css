@@ -159,18 +159,6 @@ button.primary {
   border-color: var(--accent);
   color: var(--paper);
 }
-.foot.nudge #undo,
-.foot.nudge #restart {
-  animation: nudge 0.5s ease;
-}
-@keyframes nudge {
-  25% {
-    transform: translateY(-5px);
-  }
-  60% {
-    transform: translateY(1px);
-  }
-}
 .more {
   width: min(460px, 100%);
   position: relative;
@@ -497,9 +485,7 @@ body .controls {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .morePanel,
-  .foot.nudge #undo,
-  .foot.nudge #restart {
+  .morePanel {
     animation: none;
   }
 }
@@ -755,4 +741,61 @@ body .count.ontrack {
     animation: none;
     transition: opacity 0.2s ease;
   }
+}
+
+/* ================================================================ points (Nov 14): moves made next to par, score and best */
+body #levelLabel .meta {
+  font-variant-numeric: tabular-nums;
+}
+body #levelLabel .used {
+  color: var(--ink);
+  font-weight: 800;
+}
+body #levelLabel.over .used {
+  color: var(--accent);
+}
+body .count small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+.count strong.pour {
+  color: #c8962e;
+}
+/* moves left sits between the shelf and settings buttons */
+.movesPill {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  align-self: center;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 16px;
+  box-shadow: 0 8px 18px -12px rgba(90, 63, 51, 0.7);
+  font-variant-numeric: tabular-nums;
+}
+.movesPill strong {
+  font: 600 1.4rem/1 var(--display);
+  transition: color 0.3s ease;
+}
+.movesPill strong.pour {
+  color: #c8962e;
+}
+.movesPill small {
+  font: 700 0.82rem var(--body);
+  color: var(--muted);
+}
+.movesPill.low strong {
+  color: var(--accent);
+}
+#overBest.best {
+  color: #c8962e;
+  font-size: 1.05rem;
+}
+#over .introInner button + button {
+  margin-top: 8px;
+}
+#over {
+  z-index: 4;
 }

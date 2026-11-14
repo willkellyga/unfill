@@ -116,6 +116,7 @@ const fmtDate = (ms: number) => {
 function describe(k: Keepsake): string {
   const lifts = `${k.lifts} ${k.lifts === 1 ? 'lift' : 'lifts'} (par ${k.par}${k.lifts < k.par ? ', beat it!' : ''})`;
   const parts = [`Level ${k.n}`, lifts, '★'.repeat(k.stars) + '☆'.repeat(3 - k.stars)];
+  if (typeof k.points === 'number') parts.push(`${k.points.toLocaleString('en-US')} points`);
   if (k.spare > 0) parts.push(`ribbon from ${k.spare} spare ${k.spare === 1 ? 'move' : 'moves'}`);
   const d = fmtDate(k.at);
   if (d) parts.push(d);
