@@ -2,8 +2,9 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   Random,
-  SLACK,
+  TUNING,
   Session,
+  attachParCurves,
   boardsEqual,
   findGroups,
   pointsFor,
@@ -13,7 +14,7 @@ import {
 } from '../src/core';
 
 const library: Library = JSON.parse(readFileSync(new URL('../src/library/boards.json', import.meta.url), 'utf8'));
-const boards = library.boards;
+const boards = attachParCurves(library.boards, JSON.parse(readFileSync(new URL('../src/library/par-curves.json', import.meta.url), 'utf8')));
 
 /** Round-trip a session through JSON, as the app does with localStorage. */
 function reload(s: Session): Session {
@@ -119,8 +120,8 @@ describe('session', () => {
       const left = s.pool.moves;
       const { before, grant } = s.next();
       expect(before).toBe(left);
-      expect(s.pool.moves).toBe(Math.min(left, SLACK.bankCap!) + grant);
-      expect(k.spare).toBe(Math.max(0, left - SLACK.bankCap!));
+      expect(s.pool.moves).toBe(Math.min(left, TUNING.bankCap) + grant);
+      expect(k.spare).toBe(Math.max(0, left - TUNING.bankCap));
     }
   });
 
@@ -198,16 +199,5 @@ describe('points', () => {
         expect(reload(s).over).toBe(true);
       }
     }
-  });
-});
-
-describe('easier par on levels 1-20', () => {
-  it('adds the typical extra moves (at least 1) up to level 20, and nothing after', async () => {
-    const { shownPar, PAR_CUSHION_UNTIL } = await import('../src/core/session');
-    const entry = { par: 8, metrics: { carefulGap: 0, naiveGap: 0, singles: 0, opening: 0, excess100: 250, players: { casual: 400, medium: 260, sharp: 120 } } };
-    expect(shownPar(1, entry)).toBe(11); // 2.6 extra moves rounds to 3
-    expect(shownPar(PAR_CUSHION_UNTIL, entry)).toBe(11);
-    expect(shownPar(PAR_CUSHION_UNTIL + 1, entry)).toBe(8);
-    expect(shownPar(5, { ...entry, metrics: { ...entry.metrics, players: { casual: 50, medium: 20, sharp: 0 } } })).toBe(9); // at least 1
   });
 });

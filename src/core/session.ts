@@ -2,7 +2,8 @@ import { boardsEqual, countBlocks, isCleared, EMPTY, type Board } from './grid';
 import { lift, replay, type LiftResult } from './rules';
 import { LIBRARY_RULE, transformEntry, type BoardTransform, type LibraryEntry } from './library';
 import { pickBoard, slotFor, type Pick } from './progression';
-import { SLACK, grantFor, nextBoardPool, refundMove, restartBoard, spendMove, startPool, type MovePool } from './economy';
+import { nextBoardPool, refundMove, restartBoard, spendMove, startPool, type MovePool } from './economy';
+import { TUNING, tunedGrant, tunedPar } from './tuning';
 
 /**
  * A play session: the whole game loop's state, with no rendering and no clock (milestone 5).
@@ -34,6 +35,8 @@ export interface Keepsake {
   points: number;
   /** When it was corked (ms since 1970), passed in by the app. */
   at: number;
+  /** Library id of the board (from milestone 7), so a playtest can be compared with the bots on the same boards. */
+  id?: string;
 }
 
 export interface SaveData {
@@ -71,21 +74,15 @@ export function pointsFor(lifts: number, par: number): number {
 /** Boards remembered so none repeat soon (plan: "the last 200 board ids"). */
 export const RECENT_LIMIT = 200;
 
-/** Levels up to this one show an easier par (Will, Nov 14: "easier to beat par and feeling like you're doing better"). */
-export const PAR_CUSHION_UNTIL = 20;
-
 /**
- * The par she sees and scores against. On levels 1–20 par is proven to be the shortest solution (or nearly always is),
- * so it could only be matched, never beaten. There it's raised by the extra moves a typical player takes on that
- * board: the "medium" simulated player's average from the library (gen/evaluate.ts), rounded, and at least 1. A
- * typical player then lands around par and beats it about half the time; a careful one beats it most of the time.
- * From level 21 par is the solver's best route again. A level's move grant is raised to at least this par (Session.grant),
- * which only changes peak levels within 1–20.
+ * The par she sees and scores against on level n (milestone 7, src/core/tuning.ts): the solver's par plus the extra
+ * moves a typical player stays within on this board a set share of the time. That share starts high and falls the
+ * longer the run goes, lower on peaks and higher on breathers, and par is always at least 1 above the solver's
+ * best, so it can always be beaten. Boards need their par curve attached (attachParCurves); without one, the
+ * typical player's average is used.
  */
-export function shownPar(n: number, entry: { par: number; metrics: LibraryEntry['metrics'] }): number {
-  if (n > PAR_CUSHION_UNTIL) return entry.par;
-  const typicalExtra = Math.floor(((entry.metrics.players.medium ?? entry.metrics.excess100) + 50) / 100);
-  return entry.par + Math.max(1, typicalExtra);
+export function shownPar(n: number, entry: { par: number; curve?: number[]; metrics: LibraryEntry['metrics'] }): number {
+  return tunedPar(n, slotFor(n).role, entry);
 }
 
 /** Plan: 3 stars for par or better, 2 for up to par + 2, 1 for any clear. */
@@ -138,17 +135,14 @@ export class Session {
     this.byId = new Map(boards.map((b) => [b.id, b]));
   }
 
-  /** The par she sees and scores against (easier on levels 1–20; see shownPar). */
+  /** The par she sees and scores against (see shownPar). */
   get par(): number {
-    return shownPar(this.n, this.pick.entry);
+    return tunedPar(this.n, this.pick.slot.role, this.pick.entry);
   }
 
-  /**
-   * Moves poured in for this board: the economy's grant, but never fewer than the par she's shown, so on the
-   * easier-par levels (1–20) a level always brings at least its par in moves.
-   */
+  /** Moves poured in for this level: its par plus the role's bonus (TUNING.bonus), so never fewer than par. */
   get grant(): number {
-    return Math.max(grantFor(this.pick.slot, this.pick.entry), this.par);
+    return tunedGrant(this.par, this.pick.slot.role);
   }
 
   get cleared(): boolean {
@@ -176,9 +170,9 @@ export class Session {
     if (this.recent.length > RECENT_LIMIT) this.recent.splice(0, this.recent.length - RECENT_LIMIT);
     this.setBoard(n, pick);
     const grant = this.grant;
-    if (fresh || !this.pool) this.pool = startPool(grant);
+    if (fresh || !this.pool) this.pool = startPool(grant, TUNING);
     else {
-      const next = nextBoardPool(this.pool, grant);
+      const next = nextBoardPool(this.pool, grant, TUNING);
       this.pool = { moves: next.moves, atBoardStart: next.atBoardStart };
     }
     return { before, grant };
@@ -240,16 +234,17 @@ export class Session {
       const b = snaps[k].board;
       layers.push([b.cells[this.taps[k]], countBlocks(b) - countBlocks(snaps[k + 1].board)]);
     }
-    const cap = SLACK.bankCap;
+    const cap = TUNING.bankCap;
     return {
       n: this.n,
       layers,
       lifts: this.taps.length,
       par: this.par,
       stars: starsFor(this.taps.length, this.par),
-      spare: cap === null ? 0 : Math.max(0, this.pool.moves - cap),
+      spare: Math.max(0, this.pool.moves - cap),
       points: pointsFor(this.taps.length, this.par),
       at,
+      id: this.pick.entry.id,
     };
   }
 
