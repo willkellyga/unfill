@@ -26,6 +26,7 @@ import libraryText from '../../library/boards.json?raw';
 import curvesText from '../../library/par-curves.json?raw';
 import dailyText from '../../library/daily.json?raw';
 import { Audio } from './audio';
+import { crazyData, crazyGame, initCrazy, onCrazyAuth, onCrazyMute } from './crazy';
 import { Blocks } from './blocks';
 import { groupMasks } from './merged';
 import { Bottle } from './bottle';
@@ -60,8 +61,17 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const easeOut = (t: number) => 1 - (1 - t) * (1 - t);
 const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+// The portal build starts the CrazyGames SDK first (crazy.ts): its Data Module keeps her progress in her
+// CrazyGames account, so it has to be ready before anything below reads a save.
+const crazy = __PORTAL__ ? await initCrazy() : false;
+if (crazy) crazyGame.loadingStart();
+/** Kept on this device even with the Data Module: the quality a screen can run isn't something to sync. */
+const DEVICE_ONLY = new Set(['unfill-tier', 'unfill-fps']);
+/** Set while the page reloads for a login, so the guest's game can't be written over the account's. */
+let storeFrozen = false;
 const store = {
   get(k: string): string | null {
+    if (crazy && !DEVICE_ONLY.has(k)) return crazyData.get(k);
     try {
       return localStorage.getItem(k);
     } catch {
@@ -69,6 +79,8 @@ const store = {
     }
   },
   set(k: string, v: string): void {
+    if (storeFrozen) return;
+    if (crazy && !DEVICE_ONLY.has(k)) return crazyData.set(k, v);
     try {
       localStorage.setItem(k, v);
     } catch {
@@ -97,6 +109,15 @@ const bottle = new Bottle();
 bottle.setScale(BOTTLE_SCALE);
 T.scene.add(bottle.group);
 const audio = new Audio(store.get('unfill-muted') === '1');
+if (crazy) {
+  // CrazyGames' sound button wins over her own setting
+  onCrazyMute((m) => audio.setForcedMute(m));
+  // logging in brings her account's progress (or moves the guest's into it); start again from that
+  onCrazyAuth(() => {
+    storeFrozen = true;
+    location.reload();
+  });
+}
 
 // milestone 6 settings: color-blind patterns, reduced motion (follows the phone until she flips it), vibration
 let patterns: PatternMode = parsePatternMode(store.get('unfill-patterns'));
@@ -179,10 +200,20 @@ const ephemeral = trayParam > 0 || dailyParam > 0 || params.has('nosave');
 
 declare const __BUILD__: string;
 /**
+ * Portal build (`npm run build:crazygames`, for CrazyGames' Basic Launch): no playtest upload, no home-screen app or
+ * service worker, no "add to home screen" card, no portrait lock (the portal asks players to rotate), straight into
+ * play with no start card, and the wide layout on landscape screens. `?portal` previews it on any build.
+ */
+declare const __PORTAL__: boolean;
+const portalParam = params.has('portal');
+const portal = __PORTAL__ || portalParam;
+if (portal) document.documentElement.classList.add('portal');
+/**
  * Playtest upload: each finished level goes to Will's Sheet (playtest.ts). Not from test links, and not from scripted
  * browsers (the perf and loop checks) unless they name a collector with `?collector=`.
  */
-const playtest = ephemeral
+const playtest =
+  __PORTAL__ || portalParam || ephemeral
   ? null
   : new Playtest({
       store,
@@ -520,6 +551,7 @@ function countUp(from: number, to: number, seconds: number, id = 'moves'): void 
 }
 
 function placeBottle(): void {
+  bottle.setScale(T.bottleScale);
   bottle.home.copy(T.bottleSpot);
   bottle.group.position.copy(T.bottleSpot);
   bottle.group.updateMatrixWorld(true);
@@ -923,6 +955,7 @@ function clearedBanner(k: Keepsake | undefined): void {
   if (newBestShown === false && best > 0 && S.score > bestAtRunStart) {
     newBestShown = true;
     sub += ' · New best!';
+    crazyGame.happytime();
   }
   if (k.spare > 0) sub += ` · ${k.spare} spare ${k.spare === 1 ? 'move' : 'moves'} became a ribbon`;
   banner(k.stars, `+${fmt(k.points)} points`, sub, 2600, 'clear');
@@ -1066,7 +1099,8 @@ function showDailyDone(): void {
 
 /** Share her first try at a daily, Wordle style: the share sheet on a phone, the clipboard elsewhere. */
 async function shareDaily(r: DailyRecord): Promise<void> {
-  const url = location.origin + location.pathname;
+  // on a portal the page's own address is the bare game file, not somewhere to send friends
+  const url = portal ? '' : location.origin + location.pathname;
   const text = shareText(r, dailyPuzzle(dailyPool, boards, r.n).dayName, /^https?:/.test(url) ? url : '');
   const nav = navigator as Navigator & { share?: (d: { text: string }) => Promise<void> };
   if (nav.share && matchMedia('(pointer: coarse)').matches) {
@@ -1401,12 +1435,24 @@ function frame(): void {
     else showOver();
   }
   placeHand();
+  if (crazy) syncGameplay();
   T.render();
   const cost = performance.now() - t0;
   jsCost = jsCost * 0.95 + cost * 0.05;
   if (costLog.length < 5000) costLog.push(cost);
   if (showFps && frameIdx % 15 === 0) drawFps();
   requestAnimationFrame(frame);
+}
+
+/** CrazyGames is told when the tray is in play, and when a card or panel pauses it. */
+const pauseCards = ['intro', 'over', 'shelf', 'daily', 'dailyDone', 'lessonDone'].map((id) => $(id));
+let inPlay = false;
+function syncGameplay(): void {
+  const on = !more.open && pauseCards.every((c) => c.hidden);
+  if (on === inPlay) return;
+  inPlay = on;
+  if (on) crazyGame.gameplayStart();
+  else crazyGame.gameplayStop();
 }
 
 // ---------------------------------------------------------------- input: tap to lift
@@ -1519,10 +1565,43 @@ function toast(msg: string): void {
 function viewKey(): string {
   return `${canvas.clientWidth}x${canvas.clientHeight} ${window.innerWidth}x${window.innerHeight} @${window.devicePixelRatio}`;
 }
+/**
+ * The wide layout (portal builds, or `?wide`): on a landscape screen the level, moves and score stack in a column at the
+ * left, the buttons in a column at the right, and the bottle stands on the table beside the tray, so the tray gets
+ * the full height of the screen instead of sitting small in the middle with empty sides.
+ */
+const wideOk = portal || params.has('wide');
+function isWide(): boolean {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  return wideOk && w >= 600 && w >= 1.25 * h;
+}
+
 function layout(): void {
   framedFor = viewKey();
   T.renderer.setPixelRatio(Math.min(tier.maxDpr, window.devicePixelRatio || 1));
+  const wide = isWide();
+  document.documentElement.classList.toggle('wide', wide);
+  if (wide !== T.wide) {
+    T.setWide(wide);
+    placeBottle();
+  }
   const view = canvas.getBoundingClientRect();
+  if (wide) {
+    // the columns' inner edges bound the tray; during the lesson the speech bubble sits under it
+    const hud = $('hud').getBoundingClientRect();
+    const foot = $('bar').getBoundingClientRect();
+    const coach = $('coach');
+    const bottom = coach.hidden ? 14 : view.bottom - coach.getBoundingClientRect().top + 8;
+    T.frame({ top: 14, bottom, side: 0, left: hud.right - view.left + 10, right: view.right - foot.left + 10 });
+    const vp = T.viewport;
+    grains.setScale(vp.h * T.renderer.getPixelRatio(), T.fov);
+    const mid = T.toScreen(new THREE.Vector3(0, T.rows / 2, 0));
+    document.documentElement.style.setProperty('--banner-y', `${Math.round(mid.y)}px`);
+    document.documentElement.style.setProperty('--banner-x', `${Math.round(mid.x)}px`);
+    return;
+  }
+  document.documentElement.style.removeProperty('--banner-x');
   const bar = $('bar').getBoundingClientRect();
   // the bottle stands centered under the moves card, with the side chips beside its neck
   const top = $('hudCenter').getBoundingClientRect().bottom - view.top + 4;
@@ -1640,6 +1719,10 @@ function syncInstall(): void {
   const st = installState();
   const note = $('installNote');
   const row = $('installRow');
+  if (portal) {
+    row.hidden = true;
+    return;
+  }
   row.querySelector('.installBtn')?.remove();
   if (st.standalone) {
     note.textContent = st.offlineReady
@@ -1910,7 +1993,7 @@ function markReady(): void {
   row.anim = Math.round(readyAt - at);
   pendingTap = null;
   playtest?.poured(row.anim);
-  if (row.think > 60000) return;
+  if (row.think > 60000 || portal) return;
   const rows = loadTimings();
   rows.push(row);
   store.set(TIMING_KEY, JSON.stringify(rows.slice(-1000)));
@@ -1956,6 +2039,8 @@ function startLesson(): void {
 /** Lesson 2's bottle is away: the closing card, then back to the run. */
 function finishLesson(): void {
   if (!lesson) return;
+  // portal: no card between the lesson and level 1; play carries straight on
+  if (portal) return endLesson();
   $('coach').hidden = true;
   $('tapHand').hidden = true;
   const r = runS!;
@@ -2107,6 +2192,10 @@ $('shelf').addEventListener('keydown', (e) => {
 $('startBtn').onclick = () => {
   audio.unlock();
   $('intro').hidden = true;
+  startPlay();
+};
+/** Play begins: the lesson for a new player, or the level's banner. */
+function startPlay(): void {
   if (tierChoice === 'auto') tierCheck = { until: performance.now() + 2000, sum: 0, count: 0 };
   if (firstPlay && !isDaily(S)) startLesson();
   else levelBanner(null);
@@ -2114,13 +2203,22 @@ $('startBtn').onclick = () => {
   readyAt = performance.now();
   const st = installState();
   playtest?.opened({ run: run().seed, n: run().n, installed: st.standalone, ios: st.ios, screen: `${screen.width}x${screen.height}` });
-};
-initPwa(() => {
-  syncInstall();
-  // Android's install prompt can arrive after the card is up: swap the steps for the one-tap button
-  if (homeOpen) showHomeCard();
-}, toast);
-maybeAskHome();
+}
+if (!portal) {
+  initPwa(() => {
+    syncInstall();
+    // Android's install prompt can arrive after the card is up: swap the steps for the one-tap button
+    if (homeOpen) showHomeCard();
+  }, toast);
+  maybeAskHome();
+} else {
+  // on a portal, the progress code (a Safari/home-screen helper) and the tap log (for tuning) aren't needed
+  $('moveRow').hidden = true;
+  $('timingRow').hidden = true;
+  // iOS can leave sound suspended after the app was in the background; a tap or click brings it back
+  for (const type of ['touchend', 'click'])
+    document.addEventListener(type, () => audio.resumeIfSuspended(), { passive: true, capture: true });
+}
 window.addEventListener('appinstalled', closeHomeCard);
 
 // her progress is saved after every move; this catches anything in flight when the page goes away
@@ -2138,12 +2236,13 @@ window.visualViewport?.addEventListener('resize', layout);
 // ---------------------------------------------------------------- phones play upright (orientation.ts)
 
 preventZoom();
-lockPortrait();
+// a portal asks players to turn their phone itself, and the wide layout plays sideways
+if (!portal) lockPortrait();
 let sidewaysSince = 0;
 
 /** Show the "turn your phone upright" card while a phone is sideways; it keeps taps off the tray. */
 function checkUpright(): void {
-  const now = isPhone() && isLandscape();
+  const now = !portal && isPhone() && isLandscape();
   if (now === sideways) return;
   sideways = now;
   $('upright').hidden = !sideways;
@@ -2205,6 +2304,12 @@ if (firstPlay && !isDaily(S) && !(resumed && S.over)) {
   $('startBtn').textContent = 'Begin';
 }
 warmup();
+if (crazy) crazyGame.loadingStop();
+// portal: no start card; new players land in the lesson, everyone else straight back in their tray
+if (portal && !$('intro').hidden) {
+  $('intro').hidden = true;
+  startPlay();
+}
 
 /**
  * Compile every shader before play: a bottle layer, the cork, the preview ghost and the grains. Otherwise each one
@@ -2238,6 +2343,8 @@ requestAnimationFrame(frame);
 // Hooks for the scripted performance check (scripts/perf.mjs). Harmless in normal play.
 (window as unknown as { unfill: unknown }).unfill = {
   tap: (cell: number) => doLift(cell),
+  /** Is the sound off, by her setting or the portal's mute? */
+  silent: () => audio.muted || (audio as unknown as { forced: boolean }).forced,
   board: () => ({ cols: S.cur.board.cols, rows: S.cur.board.rows, cells: Array.from(S.cur.board.cells) }),
   busy: () => !!pour || flights.length > 0 || !!fillIn,
   level: () => S.n,
@@ -2262,6 +2369,8 @@ requestAnimationFrame(frame);
   overShown: () => !$('over').hidden,
   save: () => store.get(SAVE_KEY),
   dismissIntro: () => $('startBtn').click(),
+  /** The scene itself, for the marketing renders (marketing/render.mjs): camera framing, the bottle, the wide layout. */
+  stage: () => ({ T, bottle, layout, placeBottle }),
   /** Freeze the scene clock (seconds) for frame-exact screenshots; null resumes. */
   freeze: (t: number | null) => {
     clockOverride = t;

@@ -2,3 +2,6 @@ node_modules
 dist
 dist-single
 playtest-sample.csv
+dist-crazygames
+unfill-crazygames.zip
+marketing/out

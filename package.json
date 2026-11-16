@@ -15,6 +15,7 @@
     "economy:sample": "tsx gen/economy/sample.ts",
     "economy:tune": "tsx gen/economy/tune.ts",
     "build:single": "ARTIFACT=1 vite build && node scripts/single-file.mjs",
+    "build:crazygames": "tsc --noEmit && PORTAL=crazygames vite build && node scripts/portal-zip.mjs",
     "perf": "node scripts/perf.cjs",
     "loop-check": "node scripts/loop-check.cjs",
     "offline-check": "node scripts/offline-check.cjs",

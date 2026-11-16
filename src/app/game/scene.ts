@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BOTTLE_H } from './bottle';
+import { BOTTLE_H, BOTTLE_R } from './bottle';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { backdropTexture, causticTexture, glareTexture, softShadowTexture, woodTexture } from './textures';
@@ -32,6 +32,18 @@ export interface Insets {
   top: number;
   bottom: number;
   side: number;
+  /** Uneven sides (the wide layout's HUD columns); default `side`. */
+  left?: number;
+  right?: number;
+}
+
+/**
+ * Wide screens (portal builds on a desktop or a sideways phone): the HUD moves into columns either side, and the bottle
+ * leaves the top rail to stand on the table beside the tray, so the tray gets the screen's full height. The bottle is
+ * shown bigger there, a little more for tall trays so it keeps its size next to them.
+ */
+export function wideBottleScale(rows: number): number {
+  return Math.min(1.3, Math.max(0.8, 0.55 + 0.07 * rows));
 }
 
 export class Terrarium {
@@ -180,9 +192,32 @@ export class Terrarium {
   }
 
 
+  /** The wide layout: bottle on the table at the tray's right instead of on its top rail (see wideBottleScale). */
+  wide = false;
+
+  /** How big the bottle is shown for this tray and layout. */
+  get bottleScale(): number {
+    return this.wide ? wideBottleScale(this.rows) : BOTTLE_SCALE;
+  }
+
   /** Where the bottle stands (its base center). */
   get bottleSpot(): THREE.Vector3 {
+    if (this.wide) return new THREE.Vector3(this.cols / 2 + 0.35 + 0.3 + BOTTLE_R * this.bottleScale, -PLINTH_H, 0);
     return new THREE.Vector3(0, this.railTop, 0);
+  }
+
+  /** Switch layouts: the bottle's contact shadow moves with it (the caller re-places the bottle). */
+  setWide(on: boolean): void {
+    this.wide = on;
+    this.placeBottleShadow();
+  }
+
+  private placeBottleShadow(): void {
+    const m = this.bottleShadow;
+    if (!m) return;
+    const spot = this.bottleSpot;
+    m.position.set(spot.x + 0.3, spot.y + 0.005, 0.15);
+    m.scale.setScalar(this.bottleScale / BOTTLE_SCALE);
   }
 
   /** Build the tray for a board size. */
@@ -261,10 +296,9 @@ export class Terrarium {
       new THREE.MeshBasicMaterial({ map: this.shadowRound, transparent: true, depthWrite: false, opacity: 0.45, color: 0x5a3a22 }),
     );
     bottleShadow.rotation.x = -Math.PI / 2;
-    const spot = this.bottleSpot;
-    bottleShadow.position.set(spot.x + 0.3, spot.y + 0.005, 0.15);
     t.add(bottleShadow);
     this.bottleShadow = bottleShadow;
+    this.placeBottleShadow();
 
     // sunlight through the glass makes a soft caustic on the table in front of the tray
     this.causticMesh = new THREE.Mesh(new THREE.PlaneGeometry(w + 2, 3.2), this.causticMat);
@@ -303,7 +337,9 @@ export class Terrarium {
     const m = this.bottleShadow;
     if (!m) return;
     m.position.x = this.bottleSpot.x + 0.3 + dx;
-    (m.material as THREE.MeshBasicMaterial).opacity = 0.45 * Math.max(0, 1 - dy / 1.2) * Math.max(0, 1 - dx / 3);
+    // off the edge of the rail it's gone; on the table (wide layout) it stays under the bottle as it slides away
+    const fade = this.wide ? 1 : Math.max(0, 1 - dx / 3);
+    (m.material as THREE.MeshBasicMaterial).opacity = 0.45 * Math.max(0, 1 - dy / 1.2) * fade;
   }
 
   pick(clientX: number, clientY: number): number | null {
@@ -338,7 +374,7 @@ export class Terrarium {
    * Fit the tray and the bottle into the part of the screen the HUD leaves free. Finds the camera distance that
    * makes the scene's box fill that region, then shifts the projection so the box sits in its middle.
    */
-  frame(insets: Insets): void {
+  frame(insets: Insets, view: { yawDeg?: number; pitchDeg?: number } = {}): void {
     this.resizeRenderer();
     const W = this.viewW;
     const H = this.viewH;
@@ -347,15 +383,25 @@ export class Terrarium {
     cam.clearViewOffset();
     cam.updateProjectionMatrix();
 
-    const regionW = Math.max(100, W - 2 * insets.side);
+    const left = insets.left ?? insets.side;
+    const right = insets.right ?? insets.side;
+    const regionW = Math.max(100, W - left - right);
     const regionH = Math.max(100, H - insets.top - insets.bottom);
     // the glass edge to edge, and the bottle with its cork on top; the plinth and table are cropped away
     const xs = this.cols / 2 + 0.12;
     const top = this.railTop + BOTTLE_SCALE * BOTTLE_H;
-    const box = new THREE.Box3(new THREE.Vector3(-xs, -0.12, -0.55), new THREE.Vector3(xs, top, 0.55));
+    // wide: the tray from its plinth to its rail, and the bottle standing on the table at its right
+    const box = this.wide
+      ? new THREE.Box3(
+          new THREE.Vector3(-xs - 0.25, -PLINTH_H - 0.05, -0.55),
+          new THREE.Vector3(this.bottleSpot.x + BOTTLE_R * this.bottleScale + 0.1, this.railTop + 0.1, 0.55),
+        )
+      : new THREE.Box3(new THREE.Vector3(-xs, -0.12, -0.55), new THREE.Vector3(xs, top, 0.55));
     const center = box.getCenter(new THREE.Vector3());
-    const pitch = (PITCH_DEG * Math.PI) / 180;
-    const dir = new THREE.Vector3(0, Math.sin(pitch), Math.cos(pitch));
+    // the game looks nearly head-on; marketing renders (marketing/) turn the camera for a three-quarter view
+    const pitch = ((view.pitchDeg ?? PITCH_DEG) * Math.PI) / 180;
+    const yaw = ((view.yawDeg ?? 0) * Math.PI) / 180;
+    const dir = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
     const corners: THREE.Vector3[] = [];
     for (const x of [box.min.x, box.max.x])
       for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) corners.push(new THREE.Vector3(x, y, z));
@@ -393,7 +439,7 @@ export class Terrarium {
     // shift so the box's projected center lands in the region's center
     const boxCx = ((e.x0 + e.x1) / 2 + 1) * 0.5 * W;
     const boxCy = (1 - (e.y0 + e.y1) / 2) * 0.5 * H;
-    const regCx = W / 2;
+    const regCx = left + regionW / 2;
     const regCy = insets.top + regionH / 2;
     cam.setViewOffset(W, H, boxCx - regCx, boxCy - regCy, W, H);
     cam.updateProjectionMatrix();
