@@ -2332,6 +2332,8 @@ requestAnimationFrame(frame);
   overShown: () => !$('over').hidden,
   save: () => store.get(SAVE_KEY),
   dismissIntro: () => $('startBtn').click(),
+  /** The scene itself, for the marketing renders (marketing/render.mjs): camera framing, the bottle, the wide layout. */
+  stage: () => ({ T, bottle, layout, placeBottle }),
   /** Freeze the scene clock (seconds) for frame-exact screenshots; null resumes. */
   freeze: (t: number | null) => {
     clockOverride = t;

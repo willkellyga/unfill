@@ -374,7 +374,7 @@ export class Terrarium {
    * Fit the tray and the bottle into the part of the screen the HUD leaves free. Finds the camera distance that
    * makes the scene's box fill that region, then shifts the projection so the box sits in its middle.
    */
-  frame(insets: Insets): void {
+  frame(insets: Insets, view: { yawDeg?: number; pitchDeg?: number } = {}): void {
     this.resizeRenderer();
     const W = this.viewW;
     const H = this.viewH;
@@ -398,8 +398,10 @@ export class Terrarium {
         )
       : new THREE.Box3(new THREE.Vector3(-xs, -0.12, -0.55), new THREE.Vector3(xs, top, 0.55));
     const center = box.getCenter(new THREE.Vector3());
-    const pitch = (PITCH_DEG * Math.PI) / 180;
-    const dir = new THREE.Vector3(0, Math.sin(pitch), Math.cos(pitch));
+    // the game looks nearly head-on; marketing renders (marketing/) turn the camera for a three-quarter view
+    const pitch = ((view.pitchDeg ?? PITCH_DEG) * Math.PI) / 180;
+    const yaw = ((view.yawDeg ?? 0) * Math.PI) / 180;
+    const dir = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
     const corners: THREE.Vector3[] = [];
     for (const x of [box.min.x, box.max.x])
       for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) corners.push(new THREE.Vector3(x, y, z));
