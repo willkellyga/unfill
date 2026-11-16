@@ -26,6 +26,7 @@ import libraryText from '../../library/boards.json?raw';
 import curvesText from '../../library/par-curves.json?raw';
 import dailyText from '../../library/daily.json?raw';
 import { Audio } from './audio';
+import { crazyData, crazyGame, initCrazy, onCrazyAuth, onCrazyMute } from './crazy';
 import { Blocks } from './blocks';
 import { groupMasks } from './merged';
 import { Bottle } from './bottle';
@@ -60,8 +61,17 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const easeOut = (t: number) => 1 - (1 - t) * (1 - t);
 const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+// The portal build starts the CrazyGames SDK first (crazy.ts): its Data Module keeps her progress in her
+// CrazyGames account, so it has to be ready before anything below reads a save.
+const crazy = __PORTAL__ ? await initCrazy() : false;
+if (crazy) crazyGame.loadingStart();
+/** Kept on this device even with the Data Module: the quality a screen can run isn't something to sync. */
+const DEVICE_ONLY = new Set(['unfill-tier', 'unfill-fps']);
+/** Set while the page reloads for a login, so the guest's game can't be written over the account's. */
+let storeFrozen = false;
 const store = {
   get(k: string): string | null {
+    if (crazy && !DEVICE_ONLY.has(k)) return crazyData.get(k);
     try {
       return localStorage.getItem(k);
     } catch {
@@ -69,6 +79,8 @@ const store = {
     }
   },
   set(k: string, v: string): void {
+    if (storeFrozen) return;
+    if (crazy && !DEVICE_ONLY.has(k)) return crazyData.set(k, v);
     try {
       localStorage.setItem(k, v);
     } catch {
@@ -97,6 +109,15 @@ const bottle = new Bottle();
 bottle.setScale(BOTTLE_SCALE);
 T.scene.add(bottle.group);
 const audio = new Audio(store.get('unfill-muted') === '1');
+if (crazy) {
+  // CrazyGames' sound button wins over her own setting
+  onCrazyMute((m) => audio.setForcedMute(m));
+  // logging in brings her account's progress (or moves the guest's into it); start again from that
+  onCrazyAuth(() => {
+    storeFrozen = true;
+    location.reload();
+  });
+}
 
 // milestone 6 settings: color-blind patterns, reduced motion (follows the phone until she flips it), vibration
 let patterns: PatternMode = parsePatternMode(store.get('unfill-patterns'));
@@ -934,6 +955,7 @@ function clearedBanner(k: Keepsake | undefined): void {
   if (newBestShown === false && best > 0 && S.score > bestAtRunStart) {
     newBestShown = true;
     sub += ' · New best!';
+    crazyGame.happytime();
   }
   if (k.spare > 0) sub += ` · ${k.spare} spare ${k.spare === 1 ? 'move' : 'moves'} became a ribbon`;
   banner(k.stars, `+${fmt(k.points)} points`, sub, 2600, 'clear');
@@ -1413,12 +1435,24 @@ function frame(): void {
     else showOver();
   }
   placeHand();
+  if (crazy) syncGameplay();
   T.render();
   const cost = performance.now() - t0;
   jsCost = jsCost * 0.95 + cost * 0.05;
   if (costLog.length < 5000) costLog.push(cost);
   if (showFps && frameIdx % 15 === 0) drawFps();
   requestAnimationFrame(frame);
+}
+
+/** CrazyGames is told when the tray is in play, and when a card or panel pauses it. */
+const pauseCards = ['intro', 'over', 'shelf', 'daily', 'dailyDone', 'lessonDone'].map((id) => $(id));
+let inPlay = false;
+function syncGameplay(): void {
+  const on = !more.open && pauseCards.every((c) => c.hidden);
+  if (on === inPlay) return;
+  inPlay = on;
+  if (on) crazyGame.gameplayStart();
+  else crazyGame.gameplayStop();
 }
 
 // ---------------------------------------------------------------- input: tap to lift
@@ -1959,7 +1993,7 @@ function markReady(): void {
   row.anim = Math.round(readyAt - at);
   pendingTap = null;
   playtest?.poured(row.anim);
-  if (row.think > 60000) return;
+  if (row.think > 60000 || portal) return;
   const rows = loadTimings();
   rows.push(row);
   store.set(TIMING_KEY, JSON.stringify(rows.slice(-1000)));
@@ -2270,6 +2304,7 @@ if (firstPlay && !isDaily(S) && !(resumed && S.over)) {
   $('startBtn').textContent = 'Begin';
 }
 warmup();
+if (crazy) crazyGame.loadingStop();
 // portal: no start card; new players land in the lesson, everyone else straight back in their tray
 if (portal && !$('intro').hidden) {
   $('intro').hidden = true;
@@ -2308,6 +2343,8 @@ requestAnimationFrame(frame);
 // Hooks for the scripted performance check (scripts/perf.mjs). Harmless in normal play.
 (window as unknown as { unfill: unknown }).unfill = {
   tap: (cell: number) => doLift(cell),
+  /** Is the sound off, by her setting or the portal's mute? */
+  silent: () => audio.muted || (audio as unknown as { forced: boolean }).forced,
   board: () => ({ cols: S.cur.board.cols, rows: S.cur.board.rows, cells: Array.from(S.cur.board.cells) }),
   busy: () => !!pour || flights.length > 0 || !!fillIn,
   level: () => S.n,

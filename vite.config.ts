@@ -12,14 +12,21 @@ const artifact = !!process.env.ARTIFACT;
 // service worker or manifest, no lab page, into dist-crazygames/ for scripts/portal-zip.mjs to zip. See PORTAL.md.
 const portal = process.env.PORTAL === 'crazygames';
 
-/** The portal page has no home-screen app: drop the manifest, the app icons and Apple's home-screen tags. */
+/** The CrazyGames SDK (src/app/game/crazy.ts). CrazyGames asks for it to be loaded from their server, in the head. */
+export const CRAZY_SDK = 'https://sdk.crazygames.com/crazygames-sdk-v3.js';
+
+/**
+ * The portal page has no home-screen app: drop the manifest, the app icons and Apple's home-screen tags. It loads
+ * the CrazyGames SDK before the game's own script.
+ */
 function portalHtml(): Plugin {
   return {
     name: 'unfill-portal-html',
     transformIndexHtml(html) {
       return html
         .replace(/^\s*<link rel="(manifest|icon|apple-touch-icon)"[^>]*>\n/gm, '')
-        .replace(/^\s*<meta name="(apple-mobile-web-app-[a-z-]+|mobile-web-app-capable|claude:viewport-fit-sides)"[^>]*>\n/gm, '');
+        .replace(/^\s*<meta name="(apple-mobile-web-app-[a-z-]+|mobile-web-app-capable|claude:viewport-fit-sides)"[^>]*>\n/gm, '')
+        .replace(/(<meta charset="utf-8" \/>\n)/, `$1    <script src="${CRAZY_SDK}"></script>\n`);
     },
   };
 }

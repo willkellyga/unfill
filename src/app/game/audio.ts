@@ -22,10 +22,17 @@ export class Audio {
   private sfx: GainNode | null = null;
   private sandBuf: AudioBuffer | null = null;
   private live: AudioScheduledSourceNode[] = [];
+  /** Her own sound setting. */
   muted: boolean;
+  /** A portal's mute (CrazyGames' sound button); it wins over her setting without changing it. */
+  private forced = false;
 
   constructor(muted: boolean) {
     this.muted = muted;
+  }
+
+  private get silent(): boolean {
+    return this.muted || this.forced;
   }
 
   /** Call from inside a tap. Safe to call many times. */
@@ -63,7 +70,7 @@ export class Audio {
       comp.knee.value = 12;
       comp.ratio.value = 4;
       this.master = a.createGain();
-      this.master.gain.value = this.muted ? 0 : 0.9;
+      this.master.gain.value = this.silent ? 0 : 0.9;
       this.master.connect(comp).connect(a.destination);
       this.sfx = a.createGain();
       this.sfx.connect(this.master);
@@ -127,7 +134,7 @@ export class Audio {
    */
   hiss(curve: Curve, pitch: number, vol: number, q = 0.9): void {
     const a = this.ctx;
-    if (!a || this.muted || !this.sandBuf || curve.length < 2) return;
+    if (!a || this.silent || !this.sandBuf || curve.length < 2) return;
     const t = a.currentTime + 0.01;
     const s = a.createBufferSource();
     s.buffer = this.sandBuf;
@@ -155,7 +162,7 @@ export class Audio {
   /** The muffled thup of a group lifting out: a low soft thump and a puff of air. */
   thup(size: number): void {
     const a = this.ctx;
-    if (!a || this.muted) return;
+    if (!a || this.silent) return;
     const t = a.currentTime + 0.005;
     const o = a.createOscillator();
     const g = a.createGain();
@@ -189,7 +196,7 @@ export class Audio {
    */
   bottlePour(delay: number, dur: number, fillFrom: number, fillTo: number, pitch: number): void {
     const a = this.ctx;
-    if (!a || this.muted || !this.sandBuf) return;
+    if (!a || this.silent || !this.sandBuf) return;
     this.hiss(
       [
         [delay, 0],
@@ -227,7 +234,7 @@ export class Audio {
   /** A few tiny glassy pings. */
   tinkle(delay: number, count: number, vol: number): void {
     const a = this.ctx;
-    if (!a || this.muted) return;
+    if (!a || this.silent) return;
     for (let i = 0; i < count; i++) {
       const t = a.currentTime + 0.01 + delay + i * (0.03 + Math.random() * 0.05);
       const base = 2600 + Math.random() * 2400;
@@ -253,7 +260,7 @@ export class Audio {
   /** A soft pat as a landing block firms up. */
   pat(delay: number, vol: number): void {
     const a = this.ctx;
-    if (!a || this.muted) return;
+    if (!a || this.silent) return;
     const t = a.currentTime + 0.01 + delay;
     const o = a.createOscillator();
     const g = a.createGain();
@@ -272,7 +279,7 @@ export class Audio {
   /** The cork: a small rubbery squeak while it twists, then a hollow pop when it seats. */
   cork(squeakDelay: number, popDelay: number): void {
     const a = this.ctx;
-    if (!a || this.muted) return;
+    if (!a || this.silent) return;
     const t = a.currentTime + 0.01;
     // squeak
     const o = a.createOscillator();
@@ -327,7 +334,7 @@ export class Audio {
   /** A warm rising chime: the tray is empty. */
   chime(delay: number): void {
     const a = this.ctx;
-    if (!a || this.muted) return;
+    if (!a || this.silent) return;
     const notes = [523.25, 659.25, 783.99, 1046.5];
     notes.forEach((fq, i) => {
       const t = a.currentTime + 0.01 + delay + i * 0.11;
@@ -354,7 +361,7 @@ export class Audio {
   /** A soft "no" for a tap that can't happen (out of moves). */
   bonk(): void {
     const a = this.ctx;
-    if (!a || this.muted) return;
+    if (!a || this.silent) return;
     const t = a.currentTime + 0.005;
     for (const [fq, at] of [
       [330, 0],
@@ -390,7 +397,17 @@ export class Audio {
 
   setMuted(m: boolean): void {
     this.muted = m;
-    if (m) this.hush();
-    if (this.master && this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.9, this.ctx.currentTime, 0.03);
+    this.applyGain();
+  }
+
+  /** The portal's mute, on top of her own setting. */
+  setForcedMute(m: boolean): void {
+    this.forced = m;
+    this.applyGain();
+  }
+
+  private applyGain(): void {
+    if (this.silent) this.hush();
+    if (this.master && this.ctx) this.master.gain.setTargetAtTime(this.silent ? 0 : 0.9, this.ctx.currentTime, 0.03);
   }
 }
