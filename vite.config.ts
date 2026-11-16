@@ -8,6 +8,21 @@ import { defineConfig } from 'vitest/config';
 // Two pages: the 3D game (index.html) and the 2D rules lab from milestone 1 (lab.html).
 // `ARTIFACT=1` builds only the game as one bundle, for scripts/single-file.mjs to inline into one HTML file.
 const artifact = !!process.env.ARTIFACT;
+// `PORTAL=crazygames` builds the game alone for a web portal (npm run build:crazygames): no playtest upload, no
+// service worker or manifest, no lab page, into dist-crazygames/ for scripts/portal-zip.mjs to zip. See PORTAL.md.
+const portal = process.env.PORTAL === 'crazygames';
+
+/** The portal page has no home-screen app: drop the manifest, the app icons and Apple's home-screen tags. */
+function portalHtml(): Plugin {
+  return {
+    name: 'unfill-portal-html',
+    transformIndexHtml(html) {
+      return html
+        .replace(/^\s*<link rel="(manifest|icon|apple-touch-icon)"[^>]*>\n/gm, '')
+        .replace(/^\s*<meta name="(apple-mobile-web-app-[a-z-]+|mobile-web-app-capable|claude:viewport-fit-sides)"[^>]*>\n/gm, '');
+    },
+  };
+}
 
 /** Every file in public/, as site-relative paths (they're copied to the site root as they are). */
 function publicFiles(dir = resolve(import.meta.dirname, 'public')): string[] {
@@ -57,10 +72,19 @@ export default defineConfig({
   base: './',
   // the single-file artifact runs inside claude.ai's frame, where a service worker can't run
   // __BUILD__: the commit that built it (GitHub Actions sets GITHUB_SHA), sent with playtest rows
-  define: { __PWA__: JSON.stringify(!artifact), __BUILD__: JSON.stringify((process.env.GITHUB_SHA || 'local').slice(0, 7)) },
-  plugins: artifact ? [] : [pwa()],
-  publicDir: artifact ? false : 'public',
-  build: artifact
+  define: {
+    __PWA__: JSON.stringify(!artifact && !portal),
+    __PORTAL__: JSON.stringify(portal),
+    __BUILD__: JSON.stringify((process.env.GITHUB_SHA || 'local').slice(0, 7)),
+  },
+  plugins: artifact ? [] : portal ? [portalHtml()] : [pwa()],
+  publicDir: artifact || portal ? false : 'public',
+  build: portal
+    ? {
+        outDir: 'dist-crazygames',
+        rollupOptions: { input: resolve(import.meta.dirname, 'index.html') },
+      }
+    : artifact
     ? {
         outDir: 'dist-single',
         modulePreload: false,

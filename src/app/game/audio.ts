@@ -47,6 +47,11 @@ export class Audio {
     s.start();
   }
 
+  /** iOS leaves the context "interrupted" or "suspended" after the app was in the background; resume it in a tap. */
+  resumeIfSuspended(): void {
+    if (this.ctx && this.ctx.state !== 'running' && !document.hidden) void this.ctx.resume();
+  }
+
   private context(): AudioContext | null {
     if (this.ctx) return this.ctx;
     try {

@@ -19,6 +19,8 @@ const SEGS = 40;
 const SCALE = 0.84;
 /** Bottle height above the rail at scale 1, cork included. */
 export const BOTTLE_H = 3.3;
+/** Body radius at scale 1. */
+export const BOTTLE_R = BODY_R;
 const CORK_H = 0.42;
 const CORK_SEAT = MOUTH_Y + 0.14 - CORK_H / 2; // cork center when pressed in
 

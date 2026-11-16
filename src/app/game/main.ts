@@ -179,10 +179,20 @@ const ephemeral = trayParam > 0 || dailyParam > 0 || params.has('nosave');
 
 declare const __BUILD__: string;
 /**
+ * Portal build (`npm run build:crazygames`, for CrazyGames' Basic Launch): no playtest upload, no home-screen app or
+ * service worker, no "add to home screen" card, no portrait lock (the portal asks players to rotate), straight into
+ * play with no start card, and the wide layout on landscape screens. `?portal` previews it on any build.
+ */
+declare const __PORTAL__: boolean;
+const portalParam = params.has('portal');
+const portal = __PORTAL__ || portalParam;
+if (portal) document.documentElement.classList.add('portal');
+/**
  * Playtest upload: each finished level goes to Will's Sheet (playtest.ts). Not from test links, and not from scripted
  * browsers (the perf and loop checks) unless they name a collector with `?collector=`.
  */
-const playtest = ephemeral
+const playtest =
+  __PORTAL__ || portalParam || ephemeral
   ? null
   : new Playtest({
       store,
@@ -520,6 +530,7 @@ function countUp(from: number, to: number, seconds: number, id = 'moves'): void 
 }
 
 function placeBottle(): void {
+  bottle.setScale(T.bottleScale);
   bottle.home.copy(T.bottleSpot);
   bottle.group.position.copy(T.bottleSpot);
   bottle.group.updateMatrixWorld(true);
@@ -1066,7 +1077,8 @@ function showDailyDone(): void {
 
 /** Share her first try at a daily, Wordle style: the share sheet on a phone, the clipboard elsewhere. */
 async function shareDaily(r: DailyRecord): Promise<void> {
-  const url = location.origin + location.pathname;
+  // on a portal the page's own address is the bare game file, not somewhere to send friends
+  const url = portal ? '' : location.origin + location.pathname;
   const text = shareText(r, dailyPuzzle(dailyPool, boards, r.n).dayName, /^https?:/.test(url) ? url : '');
   const nav = navigator as Navigator & { share?: (d: { text: string }) => Promise<void> };
   if (nav.share && matchMedia('(pointer: coarse)').matches) {
@@ -1519,10 +1531,43 @@ function toast(msg: string): void {
 function viewKey(): string {
   return `${canvas.clientWidth}x${canvas.clientHeight} ${window.innerWidth}x${window.innerHeight} @${window.devicePixelRatio}`;
 }
+/**
+ * The wide layout (portal builds, or `?wide`): on a landscape screen the level, moves and score stack in a column at the
+ * left, the buttons in a column at the right, and the bottle stands on the table beside the tray, so the tray gets
+ * the full height of the screen instead of sitting small in the middle with empty sides.
+ */
+const wideOk = portal || params.has('wide');
+function isWide(): boolean {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  return wideOk && w >= 600 && w >= 1.25 * h;
+}
+
 function layout(): void {
   framedFor = viewKey();
   T.renderer.setPixelRatio(Math.min(tier.maxDpr, window.devicePixelRatio || 1));
+  const wide = isWide();
+  document.documentElement.classList.toggle('wide', wide);
+  if (wide !== T.wide) {
+    T.setWide(wide);
+    placeBottle();
+  }
   const view = canvas.getBoundingClientRect();
+  if (wide) {
+    // the columns' inner edges bound the tray; during the lesson the speech bubble sits under it
+    const hud = $('hud').getBoundingClientRect();
+    const foot = $('bar').getBoundingClientRect();
+    const coach = $('coach');
+    const bottom = coach.hidden ? 14 : view.bottom - coach.getBoundingClientRect().top + 8;
+    T.frame({ top: 14, bottom, side: 0, left: hud.right - view.left + 10, right: view.right - foot.left + 10 });
+    const vp = T.viewport;
+    grains.setScale(vp.h * T.renderer.getPixelRatio(), T.fov);
+    const mid = T.toScreen(new THREE.Vector3(0, T.rows / 2, 0));
+    document.documentElement.style.setProperty('--banner-y', `${Math.round(mid.y)}px`);
+    document.documentElement.style.setProperty('--banner-x', `${Math.round(mid.x)}px`);
+    return;
+  }
+  document.documentElement.style.removeProperty('--banner-x');
   const bar = $('bar').getBoundingClientRect();
   // the bottle stands centered under the moves card, with the side chips beside its neck
   const top = $('hudCenter').getBoundingClientRect().bottom - view.top + 4;
@@ -1640,6 +1685,10 @@ function syncInstall(): void {
   const st = installState();
   const note = $('installNote');
   const row = $('installRow');
+  if (portal) {
+    row.hidden = true;
+    return;
+  }
   row.querySelector('.installBtn')?.remove();
   if (st.standalone) {
     note.textContent = st.offlineReady
@@ -1956,6 +2005,8 @@ function startLesson(): void {
 /** Lesson 2's bottle is away: the closing card, then back to the run. */
 function finishLesson(): void {
   if (!lesson) return;
+  // portal: no card between the lesson and level 1; play carries straight on
+  if (portal) return endLesson();
   $('coach').hidden = true;
   $('tapHand').hidden = true;
   const r = runS!;
@@ -2107,6 +2158,10 @@ $('shelf').addEventListener('keydown', (e) => {
 $('startBtn').onclick = () => {
   audio.unlock();
   $('intro').hidden = true;
+  startPlay();
+};
+/** Play begins: the lesson for a new player, or the level's banner. */
+function startPlay(): void {
   if (tierChoice === 'auto') tierCheck = { until: performance.now() + 2000, sum: 0, count: 0 };
   if (firstPlay && !isDaily(S)) startLesson();
   else levelBanner(null);
@@ -2114,13 +2169,22 @@ $('startBtn').onclick = () => {
   readyAt = performance.now();
   const st = installState();
   playtest?.opened({ run: run().seed, n: run().n, installed: st.standalone, ios: st.ios, screen: `${screen.width}x${screen.height}` });
-};
-initPwa(() => {
-  syncInstall();
-  // Android's install prompt can arrive after the card is up: swap the steps for the one-tap button
-  if (homeOpen) showHomeCard();
-}, toast);
-maybeAskHome();
+}
+if (!portal) {
+  initPwa(() => {
+    syncInstall();
+    // Android's install prompt can arrive after the card is up: swap the steps for the one-tap button
+    if (homeOpen) showHomeCard();
+  }, toast);
+  maybeAskHome();
+} else {
+  // on a portal, the progress code (a Safari/home-screen helper) and the tap log (for tuning) aren't needed
+  $('moveRow').hidden = true;
+  $('timingRow').hidden = true;
+  // iOS can leave sound suspended after the app was in the background; a tap or click brings it back
+  for (const type of ['touchend', 'click'])
+    document.addEventListener(type, () => audio.resumeIfSuspended(), { passive: true, capture: true });
+}
 window.addEventListener('appinstalled', closeHomeCard);
 
 // her progress is saved after every move; this catches anything in flight when the page goes away
@@ -2138,12 +2202,13 @@ window.visualViewport?.addEventListener('resize', layout);
 // ---------------------------------------------------------------- phones play upright (orientation.ts)
 
 preventZoom();
-lockPortrait();
+// a portal asks players to turn their phone itself, and the wide layout plays sideways
+if (!portal) lockPortrait();
 let sidewaysSince = 0;
 
 /** Show the "turn your phone upright" card while a phone is sideways; it keeps taps off the tray. */
 function checkUpright(): void {
-  const now = isPhone() && isLandscape();
+  const now = !portal && isPhone() && isLandscape();
   if (now === sideways) return;
   sideways = now;
   $('upright').hidden = !sideways;
@@ -2205,6 +2270,11 @@ if (firstPlay && !isDaily(S) && !(resumed && S.over)) {
   $('startBtn').textContent = 'Begin';
 }
 warmup();
+// portal: no start card; new players land in the lesson, everyone else straight back in their tray
+if (portal && !$('intro').hidden) {
+  $('intro').hidden = true;
+  startPlay();
+}
 
 /**
  * Compile every shader before play: a bottle layer, the cork, the preview ghost and the grains. Otherwise each one

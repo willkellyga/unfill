@@ -442,7 +442,7 @@ body .controls {
 /* level and clear banners float over the tray, never ask for a tap, and fade on their own */
 .banner {
   position: fixed;
-  left: 50%;
+  left: var(--banner-x, 50%);
   top: var(--banner-y, 45%);
   transform: translate(-50%, -50%) scale(0.92);
   display: flex;
@@ -1536,4 +1536,120 @@ body.dailyMode #dailyBtn {
 }
 .dailyDone button + button {
   margin-top: 8px;
+}
+
+/* ================================================================ wide screens (portal builds)
+   A desktop window or a sideways phone: the level, moves and score stack in a column at the left, the buttons (with
+   their names) in a column at the right, and the bottle stands on the table beside the tray (scene.ts), so the tray
+   gets the screen's full height. main.ts adds html.wide and frames the tray between the columns. */
+html.wide {
+  --side: clamp(140px, 17vw, 210px);
+}
+html.wide body .hud {
+  bottom: 0;
+  right: auto;
+  width: calc(var(--side) + max(16px, env(safe-area-inset-left, 0px)));
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+  gap: 10px;
+  padding: 16px 0 16px max(16px, env(safe-area-inset-left, 0px));
+}
+html.wide .hudSlot {
+  flex-direction: column;
+  align-items: stretch;
+}
+html.wide .hud .chip {
+  width: 100%;
+}
+html.wide .hud .movesCard {
+  min-width: 0;
+  max-width: none;
+  padding: 10px 10px 12px;
+  gap: 6px;
+}
+html.wide .movesLine {
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+html.wide .movesLine strong {
+  font-size: 2.4rem;
+}
+html.wide .goal {
+  flex-direction: column;
+  gap: 4px;
+  white-space: normal;
+}
+html.wide .track {
+  flex-wrap: wrap;
+  justify-content: center;
+  row-gap: 4px;
+}
+html.wide .hud .levelChip,
+html.wide .hud .count {
+  padding: 8px 12px 9px;
+}
+html.wide body .foot {
+  top: 0;
+  left: auto;
+  width: calc(var(--side) + max(16px, env(safe-area-inset-right, 0px)));
+  justify-content: center;
+  align-items: stretch;
+  gap: 10px;
+  padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px 0;
+}
+html.wide body .controls {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 0;
+}
+html.wide body .controls button {
+  width: 100%;
+  height: 50px;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 0 16px;
+}
+html.wide body .controls .lbl {
+  display: inline;
+}
+/* the help line sits above the buttons, wrapping in the column */
+html.wide body .how {
+  position: static;
+  transform: none;
+  width: auto;
+  max-width: none;
+  border-radius: 16px;
+  padding: 8px 12px;
+}
+/* settings open as a panel beside the buttons */
+html.wide body .morePanel {
+  position: fixed;
+  top: 16px;
+  bottom: 16px;
+  left: auto;
+  right: calc(var(--side) + max(16px, env(safe-area-inset-right, 0px)) + 12px);
+  width: min(400px, calc(100vw - 2 * var(--side) - 64px));
+  max-height: none;
+  margin: 0;
+}
+/* the lesson's speech bubble sits under the tray, between the columns */
+html.wide .coach {
+  bottom: 12px;
+  width: min(420px, calc(100vw - 2 * var(--side) - 64px));
+  min-height: 0;
+}
+html.wide .coach::after {
+  display: none;
+}
+html.wide .toast {
+  top: 16px;
+}
+html.wide .fps {
+  top: auto;
+  bottom: 12px;
+  right: calc(var(--side) + 24px);
 }
